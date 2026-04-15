@@ -51,6 +51,8 @@ python3 main.py
 - `AIRPASS_FACE_TIMEOUT` default: `5.0`
 - `AIRPASS_FACE_STABLE_SECONDS` default: `0.8`
 - `AIRPASS_COUNTDOWN_SECONDS` default: `5.0`
+- `AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN` default: `0`
+  - set `1` for strict mode (reset if face is lost during countdown)
 - `AIRPASS_GESTURE_TIMEOUT` default: `5.0`
 - `AIRPASS_ALLOW_ARDUINO_BYPASS_ON_FAIL` default: `1`
 - `AIRPASS_GESTURE_HOLD_FRAMES` default: `8`

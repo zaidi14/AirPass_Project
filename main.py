@@ -186,6 +186,12 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	require_rfid = os.getenv("AIRPASS_REQUIRE_RFID", "0").strip().lower() in {"1", "true", "yes", "on"}
 	skip_arduino = os.getenv("AIRPASS_SKIP_ARDUINO", "0").strip().lower() in {"1", "true", "yes", "on"}
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
+	require_face_during_countdown = os.getenv("AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN", "0").strip().lower() in {
+		"1",
+		"true",
+		"yes",
+		"on",
+	}
 	face_timeout = float(os.getenv("AIRPASS_FACE_TIMEOUT", str(FACE_TIMEOUT_SECONDS)))
 	face_stable_seconds = float(os.getenv("AIRPASS_FACE_STABLE_SECONDS", str(FACE_STABLE_SECONDS)))
 	countdown_seconds = float(os.getenv("AIRPASS_COUNTDOWN_SECONDS", str(COUNTDOWN_SECONDS)))
@@ -264,14 +270,16 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	gesture_progress = []
 	face_seen_since = None
 	last_countdown_announced = None
+	face_lost_since = None
 
 	def reset_to_idle(reason: str) -> None:
-		nonlocal state, state_started_at, gesture_progress, face_seen_since, last_countdown_announced
+		nonlocal state, state_started_at, gesture_progress, face_seen_since, last_countdown_announced, face_lost_since
 		print(f"[Auth] Reset -> State {idle_state} ({reason})")
 		shared.clear_gesture_events()
 		gesture_progress = []
 		face_seen_since = None
 		last_countdown_announced = None
+		face_lost_since = None
 		state = idle_state
 		state_started_at = time.monotonic()
 
@@ -317,10 +325,16 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 					reset_to_idle("face timeout")
 
 			elif state == 2:
-				if not shared.has_face():
-					send_arduino("FACE_LOST")
-					reset_to_idle("face lost during countdown")
-					continue
+				if require_face_during_countdown:
+					if not shared.has_face():
+						if face_lost_since is None:
+							face_lost_since = now
+						elif now - face_lost_since >= 0.8:
+							send_arduino("FACE_LOST")
+							reset_to_idle("face lost during countdown")
+							continue
+					else:
+						face_lost_since = None
 
 				remaining = max(0, math.ceil((state_started_at + countdown_seconds) - now))
 				if remaining != last_countdown_announced:

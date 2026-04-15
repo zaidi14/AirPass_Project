@@ -78,11 +78,9 @@ void handleCommand(String cmd) {
     showTwoLine("FACE VERIFIED", "Hold still...");
   } else if (cmd == "FACE_TIMEOUT") {
     showTwoLine("FACE TIMEOUT", "Restart flow");
-    denyPattern();
     setLockedUi();
   } else if (cmd == "FACE_LOST") {
     showTwoLine("FACE LOST", "Restart flow");
-    denyPattern();
     setLockedUi();
   } else if (cmd.startsWith("COUNTDOWN:")) {
     String value = cmd.substring(String("COUNTDOWN:").length());
@@ -103,7 +101,6 @@ void handleCommand(String cmd) {
     setLockedUi();
   } else if (cmd == "GESTURE_TIMEOUT") {
     showTwoLine("Gesture Timeout", "Restart flow");
-    denyPattern();
     setLockedUi();
   } else if (cmd == "UNLOCK") {
     lockServo.write(UNLOCK_ANGLE);
