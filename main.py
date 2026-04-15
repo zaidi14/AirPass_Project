@@ -81,6 +81,10 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 		processor.close()
 		return
 
+	gui_enabled = SHOW_GUI == 1 and bool(os.environ.get("DISPLAY"))
+	if SHOW_GUI == 1 and not gui_enabled:
+		print("[GUI] DISPLAY is not available. Falling back to headless mode.")
+
 	try:
 		while not stop_event.is_set():
 			try:
@@ -110,20 +114,24 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 				face_detected, gesture_locked, rendered = processor.process_frame(frame)
 				shared.update_vision(face_detected, gesture_locked, camera_online=True)
 
-				if SHOW_GUI == 1:
-					cv2.imshow("AirPass Security Node", rendered)
-					key = cv2.waitKey(1) & 0xFF
-					if key == ord("1"):
-						shared.push_gesture_event("Fist")
-						print("[Debug] Injected gesture: Fist")
-					elif key == ord("2"):
-						shared.push_gesture_event("Peace")
-						print("[Debug] Injected gesture: Peace")
-					elif key == ord("3"):
-						shared.push_gesture_event("Open")
-						print("[Debug] Injected gesture: Open")
-					if key in (ord("q"), 27):
-						stop_event.set()
+				if gui_enabled:
+					try:
+						cv2.imshow("AirPass Security Node", rendered)
+						key = cv2.waitKey(1) & 0xFF
+						if key == ord("1"):
+							shared.push_gesture_event("Fist")
+							print("[Debug] Injected gesture: Fist")
+						elif key == ord("2"):
+							shared.push_gesture_event("Peace")
+							print("[Debug] Injected gesture: Peace")
+						elif key == ord("3"):
+							shared.push_gesture_event("Open")
+							print("[Debug] Injected gesture: Open")
+						if key in (ord("q"), 27):
+							stop_event.set()
+					except cv2.error as exc:
+						print(f"[GUI] OpenCV display failed: {exc}. Switching to headless mode.")
+						gui_enabled = False
 
 			except Exception as exc:
 				print(f"[Camera] Exception in capture loop: {exc}. Retrying in 1 second...")
