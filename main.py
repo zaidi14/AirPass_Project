@@ -65,7 +65,12 @@ class SharedState:
 
 def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index: int = 0) -> None:
 	gesture_hold_frames = int(os.getenv("AIRPASS_GESTURE_HOLD_FRAMES", str(DEFAULT_GESTURE_HOLD_FRAMES)))
-	processor = VisionProcessor(gesture_hold_frames=gesture_hold_frames)
+	try:
+		processor = VisionProcessor(gesture_hold_frames=gesture_hold_frames)
+	except Exception as exc:
+		print(f"[Vision] Failed to initialize processor: {exc}")
+		stop_event.set()
+		return
 	capture = None
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
 

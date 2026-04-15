@@ -1,4 +1,6 @@
 from typing import List, Optional, Tuple
+from pathlib import Path
+import os
 
 import cv2
 import numpy as np
@@ -23,9 +25,7 @@ class VisionProcessor:
 		self.hands = None
 		self.face = None
 
-		self.haar_face = cv2.CascadeClassifier(
-			cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-		)
+		self.haar_face = self._load_haar_face_classifier()
 		self._kernel = np.ones((5, 5), np.uint8)
 
 		if self.mediapipe_enabled:
@@ -48,6 +48,31 @@ class VisionProcessor:
 		self.gesture_frame_count = 0
 		self.required_frames = max(7, min(10, int(gesture_hold_frames)))
 		self.sequence_stack: List[str] = []
+		self.face_detection_enabled = not self.haar_face.empty() or self.mediapipe_enabled
+
+	def _load_haar_face_classifier(self) -> cv2.CascadeClassifier:
+		candidate_paths = []
+
+		if hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
+			candidate_paths.append(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
+
+		candidate_paths.extend(
+			[
+				Path("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"),
+				Path("/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml"),
+				Path("/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"),
+				Path("/usr/local/share/opencv/haarcascades/haarcascade_frontalface_default.xml"),
+			]
+		)
+
+		for candidate_path in candidate_paths:
+			if candidate_path.exists():
+				classifier = cv2.CascadeClassifier(str(candidate_path))
+				if not classifier.empty():
+					return classifier
+
+		print("[Vision] Haar face cascade unavailable. Face detection will rely on MediaPipe if present.")
+		return cv2.CascadeClassifier()
 
 	def process_frame(self, frame) -> Tuple[bool, Optional[str], any]:
 		annotated = frame.copy()
@@ -63,6 +88,10 @@ class VisionProcessor:
 			return face_detected, gesture_locked, annotated
 
 		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+		if self.haar_face.empty():
+			self._draw_fallback_annotations(annotated, False, self.current_gesture)
+			return False, self._detect_gesture_opencv(frame), annotated
+
 		faces = self.haar_face.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
 		for (x, y, w, h) in faces:
 			cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
