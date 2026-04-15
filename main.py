@@ -1,7 +1,11 @@
 import os
 import threading
 import time
+import math
+import csv
 from collections import deque
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -12,9 +16,13 @@ from vision import VisionProcessor
 
 GESTURE_SEQUENCE = ["Fist", "Peace", "Open"]
 FACE_TIMEOUT_SECONDS = 5.0
+FACE_STABLE_SECONDS = 0.8
+COUNTDOWN_SECONDS = 5.0
 GESTURE_TIMEOUT_SECONDS = 5.0
 UNLOCK_HOLD_SECONDS = 5.0
-CAMERA_RETRY_SECONDS = 2.0
+CAMERA_RETRY_SECONDS = 1.0
+DEFAULT_GESTURE_HOLD_FRAMES = 8
+SHOW_GUI = int(os.environ.get("SHOW_GUI", 1))
 
 
 class SharedState:
@@ -56,7 +64,8 @@ class SharedState:
 
 
 def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index: int = 0) -> None:
-	processor = VisionProcessor()
+	gesture_hold_frames = int(os.getenv("AIRPASS_GESTURE_HOLD_FRAMES", str(DEFAULT_GESTURE_HOLD_FRAMES)))
+	processor = VisionProcessor(gesture_hold_frames=gesture_hold_frames)
 	capture = None
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -70,21 +79,23 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 	try:
 		while not stop_event.is_set():
 			try:
-				if capture is None or not capture.isOpened():
+				if capture is None:
 					capture = cv2.VideoCapture(camera_index)
 					capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 					capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 					capture.set(cv2.CAP_PROP_FPS, 30)
 
 					if not capture.isOpened():
-						print("[Camera] Capture unavailable. Retrying in 2 seconds...")
+						print("[Camera] Capture unavailable. Retrying in 1 second...")
 						shared.set_camera_offline()
+						capture.release()
+						capture = None
 						time.sleep(CAMERA_RETRY_SECONDS)
 						continue
 
 				ok, frame = capture.read()
 				if not ok:
-					print("[Camera] Frame read failed. Camera may be unplugged. Reconnecting...")
+					print("[Camera] Frame read failed. Camera may be unplugged. Retrying in 1 second...")
 					shared.set_camera_offline()
 					capture.release()
 					capture = None
@@ -94,22 +105,23 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 				face_detected, gesture_locked, rendered = processor.process_frame(frame)
 				shared.update_vision(face_detected, gesture_locked, camera_online=True)
 
-				cv2.imshow("AirPass Security Node", rendered)
-				key = cv2.waitKey(1) & 0xFF
-				if key == ord("1"):
-					shared.push_gesture_event("Fist")
-					print("[Debug] Injected gesture: Fist")
-				elif key == ord("2"):
-					shared.push_gesture_event("Peace")
-					print("[Debug] Injected gesture: Peace")
-				elif key == ord("3"):
-					shared.push_gesture_event("Open")
-					print("[Debug] Injected gesture: Open")
-				if key in (ord("q"), 27):
-					stop_event.set()
+				if SHOW_GUI == 1:
+					cv2.imshow("AirPass Security Node", rendered)
+					key = cv2.waitKey(1) & 0xFF
+					if key == ord("1"):
+						shared.push_gesture_event("Fist")
+						print("[Debug] Injected gesture: Fist")
+					elif key == ord("2"):
+						shared.push_gesture_event("Peace")
+						print("[Debug] Injected gesture: Peace")
+					elif key == ord("3"):
+						shared.push_gesture_event("Open")
+						print("[Debug] Injected gesture: Open")
+					if key in (ord("q"), 27):
+						stop_event.set()
 
 			except Exception as exc:
-				print(f"[Camera] Exception in capture loop: {exc}. Retrying in 2 seconds...")
+				print(f"[Camera] Exception in capture loop: {exc}. Retrying in 1 second...")
 				shared.set_camera_offline()
 				if capture is not None:
 					capture.release()
@@ -127,59 +139,139 @@ def _safe_wait(stop_event: threading.Event, seconds: float) -> bool:
 	return not stop_event.wait(seconds)
 
 
+def _init_latency_csv(csv_path: Path) -> None:
+	if csv_path.exists():
+		return
+
+	with csv_path.open("w", newline="", encoding="utf-8") as handle:
+		writer = csv.writer(handle)
+		writer.writerow(["timestamp_utc", "event", "latency_ms"])
+
+
+def _append_latency(csv_path: Path, event: str, latency_ms: float) -> None:
+	with csv_path.open("a", newline="", encoding="utf-8") as handle:
+		writer = csv.writer(handle)
+		timestamp = datetime.now(timezone.utc).isoformat()
+		writer.writerow([timestamp, event, f"{latency_ms:.3f}"])
+
+
+def serial_listener_worker(
+	arduino: ArduinoComms,
+	stop_event: threading.Event,
+	pending_unlock_times: deque,
+	pending_lock: threading.Lock,
+	latency_csv_path: Path,
+) -> None:
+	while not stop_event.is_set():
+		line = arduino.read_line()
+		if not line:
+			continue
+
+		if line.startswith("ACK:"):
+			ack_command = line[4:].strip()
+			if ack_command == "UNLOCK":
+				with pending_lock:
+					if pending_unlock_times:
+						sent_time = pending_unlock_times.popleft()
+					else:
+						sent_time = None
+
+				if sent_time is not None:
+					latency_ms = (time.monotonic() - sent_time) * 1000.0
+					_append_latency(latency_csv_path, "UNLOCK_ACK", latency_ms)
+					print(f"[Latency] UNLOCK ACK roundtrip: {latency_ms:.2f} ms")
+
+
 def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> None:
-	skip_rfid = os.getenv("AIRPASS_SKIP_RFID", "1").strip().lower() in {"1", "true", "yes", "on"}
-	skip_arduino = os.getenv("AIRPASS_SKIP_ARDUINO", "1").strip().lower() in {"1", "true", "yes", "on"}
+	require_rfid = os.getenv("AIRPASS_REQUIRE_RFID", "0").strip().lower() in {"1", "true", "yes", "on"}
+	skip_arduino = os.getenv("AIRPASS_SKIP_ARDUINO", "0").strip().lower() in {"1", "true", "yes", "on"}
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
 	face_timeout = float(os.getenv("AIRPASS_FACE_TIMEOUT", str(FACE_TIMEOUT_SECONDS)))
+	face_stable_seconds = float(os.getenv("AIRPASS_FACE_STABLE_SECONDS", str(FACE_STABLE_SECONDS)))
+	countdown_seconds = float(os.getenv("AIRPASS_COUNTDOWN_SECONDS", str(COUNTDOWN_SECONDS)))
 	gesture_timeout = float(os.getenv("AIRPASS_GESTURE_TIMEOUT", str(GESTURE_TIMEOUT_SECONDS)))
+	allow_arduino_bypass_on_fail = os.getenv("AIRPASS_ALLOW_ARDUINO_BYPASS_ON_FAIL", "1").strip().lower() in {
+		"1",
+		"true",
+		"yes",
+		"on",
+	}
 	allowed_tags = {
 		token.strip().upper() for token in os.getenv("AIRPASS_ALLOWED_TAGS", "").split(",") if token.strip()
 	}
+	latency_csv_path = Path(os.getenv("AIRPASS_LATENCY_CSV", "unlock_latency.csv"))
 
 	rfid = None
 	try:
-		if not skip_rfid:
+		if require_rfid:
 			rfid = RFIDReader(valid_tags=allowed_tags)
 	except Exception as exc:
-		if skip_rfid:
-			print(f"[RFID] Initialization failed but bypass is enabled: {exc}")
-		else:
-			print(f"[RFID] Initialization failed: {exc}")
-			stop_event.set()
-			return
+		print(f"[RFID] Initialization failed: {exc}")
+		stop_event.set()
+		return
 
-	if skip_rfid:
-		print("[RFID] Bypass mode enabled. Starting at Face check (State 1).")
+	if not require_rfid:
+		print("[RFID] Optional mode. Starting at Face check (State 1).")
 	if skip_gesture:
 		print("[Gesture] Bypass mode enabled. Face success will proceed directly to unlock.")
 	if skip_arduino:
 		print("[Arduino] Bypass mode enabled. Commands will be logged only.")
-	print(f"[Auth] Timeouts: face={face_timeout:.1f}s, gesture={gesture_timeout:.1f}s")
+	print(
+		f"[Auth] Timeouts: face={face_timeout:.1f}s, countdown={countdown_seconds:.1f}s, gesture={gesture_timeout:.1f}s"
+	)
 
 	arduino = None
 	if not skip_arduino:
 		arduino_port = os.getenv("ARDUINO_PORT", "/dev/ttyACM0")
 		arduino = ArduinoComms(port=arduino_port)
-		arduino.connect(retries=10, retry_delay=2.0)
+		connected = arduino.connect(retries=10, retry_delay=2.0)
+		if not connected:
+			if allow_arduino_bypass_on_fail:
+				print("[Arduino] Falling back to bypass mode due to connection failure.")
+				skip_arduino = True
+			else:
+				stop_event.set()
+				return
 
-	def send_arduino(command: str) -> None:
+	pending_unlock_times = deque()
+	pending_lock = threading.Lock()
+	listener_thread = None
+	if arduino is not None and not skip_arduino:
+		_init_latency_csv(latency_csv_path)
+		listener_thread = threading.Thread(
+			target=serial_listener_worker,
+			args=(arduino, stop_event, pending_unlock_times, pending_lock, latency_csv_path),
+			name="SerialListenerThread",
+			daemon=True,
+		)
+		listener_thread.start()
+
+	def send_arduino(command: str) -> bool:
 		if skip_arduino:
 			print(f"[Arduino:Bypass] {command}")
-			return
+			return True
 		if arduino is not None:
-			arduino.send_command(command)
+			ok = arduino.send_command(command)
+			if ok and command == "UNLOCK":
+				with pending_lock:
+					pending_unlock_times.append(time.monotonic())
+			return ok
+		return False
 
-	idle_state = 1 if skip_rfid else 0
+	idle_state = 1 if not require_rfid else 0
 	state = idle_state
 	state_started_at = time.monotonic()
 	gesture_progress = []
+	face_seen_since = None
+	last_countdown_announced = None
 
 	def reset_to_idle(reason: str) -> None:
-		nonlocal state, state_started_at, gesture_progress
+		nonlocal state, state_started_at, gesture_progress, face_seen_since, last_countdown_announced
 		print(f"[Auth] Reset -> State {idle_state} ({reason})")
 		shared.clear_gesture_events()
 		gesture_progress = []
+		face_seen_since = None
+		last_countdown_announced = None
 		state = idle_state
 		state_started_at = time.monotonic()
 
@@ -189,7 +281,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 
 			if state == 0:
 				if rfid is None:
-					reset_to_idle("rfid bypass")
+					reset_to_idle("rfid unavailable")
 					time.sleep(0.03)
 					continue
 
@@ -200,23 +292,48 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 						send_arduino("RFID_OK")
 						state = 1
 						state_started_at = now
+						face_seen_since = None
 					else:
 						print(f"[Auth] Invalid RFID detected: {uid}")
 						send_arduino("RFID_DENY")
 
 			elif state == 1:
 				if shared.has_face():
-					print("[Auth] Face detected within timeout")
-					send_arduino("FACE_OK")
-					shared.clear_gesture_events()
-					gesture_progress = []
-					state = 3 if skip_gesture else 2
-					state_started_at = now
-				elif now - state_started_at > face_timeout:
+					if face_seen_since is None:
+						face_seen_since = now
+					elif now - face_seen_since >= face_stable_seconds:
+						print("[Auth] Face detected within timeout")
+						send_arduino("FACE_OK")
+						shared.clear_gesture_events()
+						gesture_progress = []
+						last_countdown_announced = None
+						state = 4 if skip_gesture else 2
+						state_started_at = now
+				else:
+					face_seen_since = None
+
+				if now - state_started_at > face_timeout:
 					send_arduino("FACE_TIMEOUT")
 					reset_to_idle("face timeout")
 
 			elif state == 2:
+				if not shared.has_face():
+					send_arduino("FACE_LOST")
+					reset_to_idle("face lost during countdown")
+					continue
+
+				remaining = max(0, math.ceil((state_started_at + countdown_seconds) - now))
+				if remaining != last_countdown_announced:
+					last_countdown_announced = remaining
+					send_arduino(f"COUNTDOWN:{remaining}")
+					print(f"[Auth] Countdown: {remaining}s")
+
+				if now - state_started_at >= countdown_seconds:
+					send_arduino("GESTURE_START")
+					state = 3
+					state_started_at = now
+
+			elif state == 3:
 				gesture = shared.pop_gesture_event()
 				if gesture:
 					expected = GESTURE_SEQUENCE[len(gesture_progress)]
@@ -228,7 +345,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 						if len(gesture_progress) == len(GESTURE_SEQUENCE):
 							print("[Auth] Gesture sequence complete")
 							send_arduino("GESTURE_SEQUENCE_OK")
-							state = 3
+							state = 4
 							state_started_at = now
 					else:
 						send_arduino(f"GESTURE_FAIL:{gesture}")
@@ -238,7 +355,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 					send_arduino("GESTURE_TIMEOUT")
 					reset_to_idle("gesture timeout")
 
-			elif state == 3:
+			elif state == 4:
 				print("[Auth] UNLOCK sequence started")
 				send_arduino("UNLOCK")
 
@@ -252,6 +369,8 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 			time.sleep(0.03)
 
 	finally:
+		if listener_thread is not None:
+			listener_thread.join(timeout=2.0)
 		if arduino is not None:
 			arduino.close()
 

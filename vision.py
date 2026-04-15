@@ -12,7 +12,7 @@ except Exception:
 class VisionProcessor:
 	"""Runs face and hand processing plus gesture debounce tracking."""
 
-	def __init__(self):
+	def __init__(self, gesture_hold_frames: int = 8):
 		self.mediapipe_enabled = mp is not None
 		self.gesture_enabled = True
 		self.gesture_backend = "mediapipe" if self.mediapipe_enabled else "opencv"
@@ -46,7 +46,7 @@ class VisionProcessor:
 
 		self.current_gesture: Optional[str] = None
 		self.gesture_frame_count = 0
-		self.required_frames = 10
+		self.required_frames = max(7, min(10, int(gesture_hold_frames)))
 		self.sequence_stack: List[str] = []
 
 	def process_frame(self, frame) -> Tuple[bool, Optional[str], any]:
