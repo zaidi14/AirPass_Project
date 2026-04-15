@@ -37,6 +37,12 @@ Run:
 python3 main.py
 ```
 
+SSH run command used for Pi + Arduino testing:
+
+```bash
+SHOW_GUI=1 AIRPASS_REQUIRE_RFID=0 ARDUINO_PORT=/dev/ttyUSB0 AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN=0 python3 main.py
+```
+
 ## Important Environment Variables
 
 - `ARDUINO_PORT` default: `/dev/ttyACM0`
