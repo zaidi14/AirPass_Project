@@ -368,6 +368,8 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 						gesture_progress.append(gesture)
 						print(f"[Auth] Gesture accepted: {gesture} ({len(gesture_progress)}/{len(GESTURE_SEQUENCE)})")
 						send_arduino(f"GESTURE_OK:{gesture}")
+						# Give a fresh timeout window for each sequence step.
+						state_started_at = now
 
 						if len(gesture_progress) == len(GESTURE_SEQUENCE):
 							print("[Auth] Gesture sequence complete")

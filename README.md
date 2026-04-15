@@ -54,6 +54,7 @@ python3 main.py
 - `AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN` default: `0`
   - set `1` for strict mode (reset if face is lost during countdown)
 - `AIRPASS_GESTURE_TIMEOUT` default: `5.0`
+  - timeout window resets after each accepted step in the sequence
 - `AIRPASS_ALLOW_ARDUINO_BYPASS_ON_FAIL` default: `1`
 - `AIRPASS_GESTURE_HOLD_FRAMES` default: `8`
   - constrained to `7..10` to smooth jitter and reject single-frame false positives
