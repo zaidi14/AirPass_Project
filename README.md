@@ -80,6 +80,8 @@ python -c "import mediapipe as mp; print(mp.__version__)"
 
 If that import works, the app should switch from OpenCV fallback to MediaPipe hands and show the gesture landmarks/overlay.
 
+If `mediapipe==0.10.18` is already present on the Pi package index, that is the intended aarch64 wheel for this project.
+
 ## Arduino Sketch
 
 Use:

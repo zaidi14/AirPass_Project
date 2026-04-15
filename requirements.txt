@@ -6,6 +6,6 @@ RPi.GPIO>=0.7.1
 spidev>=3.6
 
 # MediaPipe on Pi can differ by architecture.
-# Pi 5 aarch64 should use the official MediaPipe wheel.
-mediapipe==0.10.33; platform_machine == "aarch64"
+# Pi 5 aarch64 should use an official MediaPipe wheel that exists for Python 3.11.
+mediapipe==0.10.18; platform_machine == "aarch64"
 mediapipe-rpi4==0.8.8; platform_machine == "armv7l"
