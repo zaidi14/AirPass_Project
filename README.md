@@ -62,6 +62,24 @@ python3 main.py
 - `SHOW_GUI` default: `1`
   - set `0` to run headless and skip the OpenCV preview window
 
+## Raspberry Pi 5 Gesture Backend
+
+Pi 5 on 64-bit aarch64 should use the official `mediapipe` wheel, not `mediapipe-rpi4`.
+
+Rebuild the venv after updating dependencies:
+
+```bash
+cd ~/AirPass_Project
+rm -rf .venv311
+python3.11 -m venv .venv311
+source .venv311/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+python -c "import mediapipe as mp; print(mp.__version__)"
+```
+
+If that import works, the app should switch from OpenCV fallback to MediaPipe hands and show the gesture landmarks/overlay.
+
 ## Arduino Sketch
 
 Use:
