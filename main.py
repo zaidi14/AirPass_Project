@@ -48,10 +48,6 @@ class SharedState:
 		with self._lock:
 			return self.face_detected
 
-	def is_camera_online(self) -> bool:
-		with self._lock:
-			return self.camera_online
-
 	def pop_gesture_event(self) -> Optional[str]:
 		with self._lock:
 			if not self.gesture_events:
@@ -77,12 +73,6 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 		return
 	capture = None
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
-	preferred_backend = cv2.CAP_V4L2 if hasattr(cv2, "CAP_V4L2") else 0
-
-	def open_capture(index: int):
-		if preferred_backend:
-			return cv2.VideoCapture(index, preferred_backend)
-		return cv2.VideoCapture(index)
 
 	if not skip_gesture and not processor.gesture_enabled:
 		print("[Vision] Gesture testing requested but MediaPipe gesture backend is unavailable.")
@@ -95,12 +85,10 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 		while not stop_event.is_set():
 			try:
 				if capture is None:
-					capture = open_capture(camera_index)
+					capture = cv2.VideoCapture(camera_index)
 					capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 					capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 					capture.set(cv2.CAP_PROP_FPS, 30)
-					capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-					capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
 
 					if not capture.isOpened():
 						print("[Camera] Capture unavailable. Retrying in 1 second...")
@@ -323,12 +311,6 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 						send_arduino("RFID_DENY")
 
 			elif state == 1:
-				if not shared.is_camera_online():
-					face_seen_since = None
-					state_started_at = now
-					time.sleep(0.03)
-					continue
-
 				if shared.has_face():
 					if face_seen_since is None:
 						face_seen_since = now
