@@ -67,6 +67,11 @@ void handleCommand(String cmd) {
     return;
   }
 
+  // Send ACK immediately so Pi-side roundtrip reflects link latency,
+  // not buzzer/servo/display action time.
+  Serial.print("ACK:");
+  Serial.println(cmd);
+
   if (cmd == "RFID_OK") {
     showTwoLine("RFID OK", "Proceed to face");
     setStatusLeds(false, true);
@@ -112,9 +117,6 @@ void handleCommand(String cmd) {
   } else {
     showTwoLine("Unknown cmd", cmd.substring(0, min((int)cmd.length(), 16)));
   }
-
-  Serial.print("ACK:");
-  Serial.println(cmd);
 }
 
 void setup() {
