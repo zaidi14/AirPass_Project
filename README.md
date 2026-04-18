@@ -68,6 +68,11 @@ SHOW_GUI=1 AIRPASS_REQUIRE_RFID=0 ARDUINO_PORT=/dev/ttyUSB0 AIRPASS_REQUIRE_FACE
   - logs UNLOCK send -> Arduino `ACK:UNLOCK` roundtrip in milliseconds
 - `SHOW_GUI` default: `1`
   - set `0` to run headless and skip the OpenCV preview window
+- `AIRPASS_UNLOCK_HOLD_SECONDS` default: `5.0`
+  - how long latch stays open before `LOCK` is sent
+- `AIRPASS_CAMERA_WIDTH` default: `1280`
+- `AIRPASS_CAMERA_HEIGHT` default: `720`
+- `AIRPASS_CAMERA_FPS` default: `30`
 
 ## Raspberry Pi 5 Gesture Backend
 

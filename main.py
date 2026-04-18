@@ -66,6 +66,9 @@ class SharedState:
 
 def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index: int = 0) -> None:
 	gesture_hold_frames = int(os.getenv("AIRPASS_GESTURE_HOLD_FRAMES", str(DEFAULT_GESTURE_HOLD_FRAMES)))
+	camera_width = int(os.getenv("AIRPASS_CAMERA_WIDTH", "1280"))
+	camera_height = int(os.getenv("AIRPASS_CAMERA_HEIGHT", "720"))
+	camera_fps = int(os.getenv("AIRPASS_CAMERA_FPS", "30"))
 	try:
 		processor = VisionProcessor(gesture_hold_frames=gesture_hold_frames)
 	except Exception as exc:
@@ -93,9 +96,9 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 			try:
 				if capture is None:
 					capture = cv2.VideoCapture(camera_index)
-					capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-					capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-					capture.set(cv2.CAP_PROP_FPS, 30)
+					capture.set(cv2.CAP_PROP_FRAME_WIDTH, camera_width)
+					capture.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_height)
+					capture.set(cv2.CAP_PROP_FPS, camera_fps)
 
 					if not capture.isOpened():
 						print("[Camera] Capture unavailable. Retrying in 1 second...")
@@ -217,6 +220,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	face_stable_seconds = float(os.getenv("AIRPASS_FACE_STABLE_SECONDS", str(FACE_STABLE_SECONDS)))
 	countdown_seconds = float(os.getenv("AIRPASS_COUNTDOWN_SECONDS", str(COUNTDOWN_SECONDS)))
 	gesture_timeout = float(os.getenv("AIRPASS_GESTURE_TIMEOUT", str(GESTURE_TIMEOUT_SECONDS)))
+	unlock_hold_seconds = float(os.getenv("AIRPASS_UNLOCK_HOLD_SECONDS", str(UNLOCK_HOLD_SECONDS)))
 	allow_arduino_bypass_on_fail = os.getenv("AIRPASS_ALLOW_ARDUINO_BYPASS_ON_FAIL", "1").strip().lower() in {
 		"1",
 		"true",
@@ -244,7 +248,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	if skip_arduino:
 		print("[Arduino] Bypass mode enabled. Commands will be logged only.")
 	print(
-		f"[Auth] Timeouts: face={face_timeout:.1f}s, countdown={countdown_seconds:.1f}s, gesture={gesture_timeout:.1f}s"
+		f"[Auth] Timeouts: face={face_timeout:.1f}s, countdown={countdown_seconds:.1f}s, gesture={gesture_timeout:.1f}s, unlock_hold={unlock_hold_seconds:.1f}s"
 	)
 
 	arduino = None
@@ -396,7 +400,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 				print("[Auth] UNLOCK sequence started")
 				send_arduino("UNLOCK")
 
-				if not _safe_wait(stop_event, UNLOCK_HOLD_SECONDS):
+				if not _safe_wait(stop_event, unlock_hold_seconds):
 					break
 
 				send_arduino("LOCK")
