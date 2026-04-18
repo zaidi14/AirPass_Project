@@ -43,11 +43,23 @@ SSH run command used for Pi + Arduino testing:
 SHOW_GUI=1 AIRPASS_REQUIRE_RFID=0 ARDUINO_PORT=/dev/ttyUSB0 AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN=0 python3 main.py
 ```
 
+Face-password + custom gesture example:
+
+```bash
+AIRPASS_REQUIRE_FACE_ID=1 AIRPASS_FACE_REF_IMAGE=face_password.jpg AIRPASS_FACE_ID_THRESHOLD=0.62 AIRPASS_GESTURE_SEQUENCE="Fist->Peace->Open" SHOW_GUI=1 AIRPASS_REQUIRE_RFID=0 ARDUINO_PORT=/dev/ttyUSB0 python3 main.py
+```
+
 ## Important Environment Variables
 
 - `ARDUINO_PORT` default: `/dev/ttyACM0`
 - `AIRPASS_REQUIRE_RFID` default: `0`
   - `1` to require RFID before face/gesture
+- `AIRPASS_REQUIRE_FACE_ID` default: `0`
+  - `1` to require face-password verification (reference face match) before gesture stage
+- `AIRPASS_FACE_REF_IMAGE` default: `face_password.jpg`
+  - path to the reference image used for face-password verification
+- `AIRPASS_FACE_ID_THRESHOLD` default: `0.60`
+  - cosine threshold for face-password match (raise for stricter verification)
 - `AIRPASS_ALLOWED_TAGS` default: empty
   - comma-separated UIDs, example: `A1B2C3D4,11223344`
 - `AIRPASS_SKIP_ARDUINO` default: `0`
@@ -61,6 +73,9 @@ SHOW_GUI=1 AIRPASS_REQUIRE_RFID=0 ARDUINO_PORT=/dev/ttyUSB0 AIRPASS_REQUIRE_FACE
   - set `1` for strict mode (reset if face is lost during countdown)
 - `AIRPASS_GESTURE_TIMEOUT` default: `8.0`
   - timeout window resets after each accepted step in the sequence
+- `AIRPASS_GESTURE_SEQUENCE` default: `Fist->Peace->Open`
+  - supported gestures are `Fist`, `Peace`, and `Open`
+  - example: `AIRPASS_GESTURE_SEQUENCE="Fist->Open"`
 - `AIRPASS_ALLOW_ARDUINO_BYPASS_ON_FAIL` default: `1`
 - `AIRPASS_GESTURE_HOLD_FRAMES` default: `7`
   - constrained to `7..10` to smooth jitter and reject single-frame false positives

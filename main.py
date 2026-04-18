@@ -11,6 +11,7 @@ from typing import Optional
 import cv2
 
 from arduino_comms import ArduinoComms
+from face_auth import FaceAuthenticator
 from rfid_reader import RFIDReader
 from vision import VisionProcessor
 
@@ -30,12 +31,20 @@ class SharedState:
 	def __init__(self):
 		self._lock = threading.Lock()
 		self.face_detected = False
+		self.face_verified = False
 		self.camera_online = False
 		self.gesture_events = deque(maxlen=30)
 
-	def update_vision(self, face_detected: bool, gesture_locked: Optional[str], camera_online: bool) -> None:
+	def update_vision(
+		self,
+		face_detected: bool,
+		face_verified: bool,
+		gesture_locked: Optional[str],
+		camera_online: bool,
+	) -> None:
 		with self._lock:
 			self.face_detected = face_detected
+			self.face_verified = face_verified
 			self.camera_online = camera_online
 			if gesture_locked:
 				self.gesture_events.append(gesture_locked)
@@ -44,10 +53,15 @@ class SharedState:
 		with self._lock:
 			self.camera_online = False
 			self.face_detected = False
+			self.face_verified = False
 
 	def has_face(self) -> bool:
 		with self._lock:
 			return self.face_detected
+
+	def has_verified_face(self) -> bool:
+		with self._lock:
+			return self.face_verified
 
 	def pop_gesture_event(self) -> Optional[str]:
 		with self._lock:
@@ -69,12 +83,27 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 	camera_width = int(os.getenv("AIRPASS_CAMERA_WIDTH", "640"))
 	camera_height = int(os.getenv("AIRPASS_CAMERA_HEIGHT", "480"))
 	camera_fps = int(os.getenv("AIRPASS_CAMERA_FPS", "24"))
+	require_face_id = os.getenv("AIRPASS_REQUIRE_FACE_ID", "0").strip().lower() in {"1", "true", "yes", "on"}
+	face_id_threshold = float(os.getenv("AIRPASS_FACE_ID_THRESHOLD", "0.60"))
+	face_ref_image = os.getenv("AIRPASS_FACE_REF_IMAGE", "face_password.jpg")
 	try:
 		processor = VisionProcessor(gesture_hold_frames=gesture_hold_frames)
 	except Exception as exc:
 		print(f"[Vision] Failed to initialize processor: {exc}")
 		stop_event.set()
 		return
+
+	face_auth = None
+	if require_face_id:
+		try:
+			face_auth = FaceAuthenticator(reference_image_path=face_ref_image, threshold=face_id_threshold)
+			print(f"[FaceID] Enabled with reference: {face_ref_image}, threshold={face_id_threshold:.2f}")
+		except Exception as exc:
+			print(f"[FaceID] Initialization failed: {exc}")
+			stop_event.set()
+			processor.close()
+			return
+
 	capture = None
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -118,7 +147,26 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 					continue
 
 				face_detected, gesture_locked, rendered = processor.process_frame(frame)
-				shared.update_vision(face_detected, gesture_locked, camera_online=True)
+				face_verified = False
+				if face_detected:
+					if face_auth is None:
+						face_verified = True
+					else:
+						face_verified, score = face_auth.verify(frame)
+						if gui_enabled:
+							color = (0, 255, 0) if face_verified else (0, 0, 255)
+							cv2.putText(
+								rendered,
+								f"FaceID: {'PASS' if face_verified else 'FAIL'} ({score:.2f})",
+								(10, 133),
+								cv2.FONT_HERSHEY_SIMPLEX,
+								0.6,
+								color,
+								2,
+								cv2.LINE_AA,
+							)
+
+				shared.update_vision(face_detected, face_verified, gesture_locked, camera_online=True)
 
 				if gui_enabled:
 					try:
@@ -208,6 +256,7 @@ def serial_listener_worker(
 
 def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> None:
 	require_rfid = os.getenv("AIRPASS_REQUIRE_RFID", "0").strip().lower() in {"1", "true", "yes", "on"}
+	require_face_id = os.getenv("AIRPASS_REQUIRE_FACE_ID", "0").strip().lower() in {"1", "true", "yes", "on"}
 	skip_arduino = os.getenv("AIRPASS_SKIP_ARDUINO", "0").strip().lower() in {"1", "true", "yes", "on"}
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
 	require_face_during_countdown = os.getenv("AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN", "0").strip().lower() in {
@@ -230,6 +279,16 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	allowed_tags = {
 		token.strip().upper() for token in os.getenv("AIRPASS_ALLOWED_TAGS", "").split(",") if token.strip()
 	}
+	raw_sequence = os.getenv("AIRPASS_GESTURE_SEQUENCE", "->".join(GESTURE_SEQUENCE))
+	allowed_gestures = {"Fist", "Peace", "Open"}
+	gesture_sequence = [
+		token.strip().title()
+		for token in raw_sequence.replace(",", "->").split("->")
+		if token.strip()
+	]
+	gesture_sequence = [gesture for gesture in gesture_sequence if gesture in allowed_gestures]
+	if not gesture_sequence:
+		gesture_sequence = list(GESTURE_SEQUENCE)
 	latency_csv_path = Path(os.getenv("AIRPASS_LATENCY_CSV", "unlock_latency.csv"))
 
 	rfid = None
@@ -245,6 +304,10 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 		print("[RFID] Optional mode. Starting at Face check (State 1).")
 	if skip_gesture:
 		print("[Gesture] Bypass mode enabled. Face success will proceed directly to unlock.")
+	else:
+		print(f"[Gesture] Sequence: {' -> '.join(gesture_sequence)}")
+	if require_face_id:
+		print("[FaceID] Face-password check is enabled before gesture stage.")
 	if skip_arduino:
 		print("[Arduino] Bypass mode enabled. Commands will be logged only.")
 	print(
@@ -332,16 +395,21 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 
 			elif state == 1:
 				if shared.has_face():
-					if face_seen_since is None:
-						face_seen_since = now
-					elif now - face_seen_since >= face_stable_seconds:
-						print("[Auth] Face detected within timeout")
-						send_arduino("FACE_OK")
-						shared.clear_gesture_events()
-						gesture_progress = []
-						last_countdown_announced = None
-						state = 4 if skip_gesture else 2
-						state_started_at = now
+					if require_face_id and not shared.has_verified_face():
+						face_seen_since = None
+					else:
+						if face_seen_since is None:
+							face_seen_since = now
+						elif now - face_seen_since >= face_stable_seconds:
+							print("[Auth] Face detected within timeout")
+							if require_face_id:
+								send_arduino("FACE_ID_OK")
+							send_arduino("FACE_OK")
+							shared.clear_gesture_events()
+							gesture_progress = []
+							last_countdown_announced = None
+							state = 4 if skip_gesture else 2
+							state_started_at = now
 				else:
 					face_seen_since = None
 
@@ -369,21 +437,25 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 
 				if now - state_started_at >= countdown_seconds:
 					send_arduino("GESTURE_START")
+					send_arduino(f"GESTURE_PATTERN:{'->'.join(gesture_sequence)}")
 					state = 3
 					state_started_at = now
 
 			elif state == 3:
 				gesture = shared.pop_gesture_event()
 				if gesture:
-					expected = GESTURE_SEQUENCE[len(gesture_progress)]
+					if len(gesture_progress) >= len(gesture_sequence):
+						reset_to_idle("gesture index overflow")
+						continue
+					expected = gesture_sequence[len(gesture_progress)]
 					if gesture == expected:
 						gesture_progress.append(gesture)
-						print(f"[Auth] Gesture accepted: {gesture} ({len(gesture_progress)}/{len(GESTURE_SEQUENCE)})")
+						print(f"[Auth] Gesture accepted: {gesture} ({len(gesture_progress)}/{len(gesture_sequence)})")
 						send_arduino(f"GESTURE_OK:{gesture}")
 						# Give a fresh timeout window for each sequence step.
 						state_started_at = now
 
-						if len(gesture_progress) == len(GESTURE_SEQUENCE):
+						if len(gesture_progress) == len(gesture_sequence):
 							print("[Auth] Gesture sequence complete")
 							send_arduino("GESTURE_SEQUENCE_OK")
 							state = 4

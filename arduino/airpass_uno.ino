@@ -75,6 +75,8 @@ void handleCommand(String cmd) {
   if (cmd == "RFID_OK") {
     showTwoLine("RFID OK", "Proceed to face");
     setStatusLeds(false, true);
+  } else if (cmd == "FACE_ID_OK") {
+    showTwoLine("FACE PASSWORD", "Verified");
   } else if (cmd == "RFID_DENY") {
     showTwoLine("RFID DENIED", "Try again");
     denyPattern();
@@ -93,6 +95,9 @@ void handleCommand(String cmd) {
   } else if (cmd == "GESTURE_START") {
     lastGesture = "-";
     showTwoLine("Do Gesture Seq", "Fist->Peace->Open");
+  } else if (cmd.startsWith("GESTURE_PATTERN:")) {
+    String pattern = cmd.substring(String("GESTURE_PATTERN:").length());
+    showTwoLine("Gesture Pattern", pattern.substring(0, min((int)pattern.length(), 16)));
   } else if (cmd.startsWith("GESTURE_OK:")) {
     lastGesture = cmd.substring(String("GESTURE_OK:").length());
     showTwoLine("Gesture OK", lastGesture);
