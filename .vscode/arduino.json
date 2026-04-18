@@ -1,5 +1,5 @@
 {
     "board": "arduino:avr:uno",
     "port": "/dev/ttyUSB0",
-    "sketch": "arduino/airpass_uno.ino"
+    "sketch": "arduino/arduino.ino"
 }

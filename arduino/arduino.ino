@@ -29,14 +29,14 @@ void setStatusLeds(bool greenOn, bool redOn) {
 }
 
 void showTwoLine(const String &line1, const String &line2) {
-  oled.clearDisplay();
+ /* oled.clearDisplay();
   oled.setTextSize(1);
   oled.setTextColor(SSD1306_WHITE);
   oled.setCursor(0, 8);
   oled.println(line1);
   oled.setCursor(0, 30);
   oled.println(line2);
-  oled.display();
+  oled.display();*/
 }
 
 void shortBeep(int freq, int ms) {
@@ -133,12 +133,12 @@ void setup() {
 
   lockServo.attach(SERVO_PIN);
 
-  if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  /*if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println("OLED_INIT_FAIL");
     while (true) {
       delay(100);
     }
-  }
+  }*/
 
   setLockedUi();
   showTwoLine("AirPass UNO", "Serial ready");

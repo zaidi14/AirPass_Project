@@ -113,7 +113,7 @@ If `mediapipe==0.10.18` is already present on the Pi package index, that is the 
 
 Use:
 
-- `arduino/airpass_uno.ino`
+- `arduino/arduino.ino`
 
 Hardware this sketch drives:
 

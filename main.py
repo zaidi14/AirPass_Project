@@ -315,8 +315,9 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	)
 
 	arduino = None
+	arduino_port = os.getenv("ARDUINO_PORT", "/dev/ttyACM0")
+	next_reconnect_attempt_at = 0.0
 	if not skip_arduino:
-		arduino_port = os.getenv("ARDUINO_PORT", "/dev/ttyACM0")
 		arduino = ArduinoComms(port=arduino_port)
 		connected = arduino.connect(retries=10, retry_delay=2.0)
 		if not connected:
@@ -341,11 +342,33 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 		listener_thread.start()
 
 	def send_arduino(command: str) -> bool:
+		nonlocal next_reconnect_attempt_at
 		if skip_arduino:
 			print(f"[Arduino:Bypass] {command}")
 			return True
 		if arduino is not None:
+			now_mono = time.monotonic()
+			if not arduino.is_connected() and now_mono >= next_reconnect_attempt_at:
+				print(f"[Arduino] Attempting runtime reconnect on {arduino_port}...")
+				if arduino.connect(retries=1, retry_delay=0.5):
+					print("[Arduino] Reconnected.")
+				else:
+					next_reconnect_attempt_at = now_mono + 1.0
+					print(f"[Arduino] Runtime reconnect failed. Dropping command: {command}")
+					return False
+
 			ok = arduino.send_command(command)
+			if not ok:
+				now_mono = time.monotonic()
+				if now_mono >= next_reconnect_attempt_at:
+					print(f"[Arduino] Send failed. Reconnecting and retrying command: {command}")
+					if arduino.connect(retries=1, retry_delay=0.5):
+						ok = arduino.send_command(command)
+						if ok:
+							print(f"[Arduino] Retry succeeded: {command}")
+					else:
+						next_reconnect_attempt_at = now_mono + 1.0
+
 			if ok and command == "UNLOCK":
 				with pending_lock:
 					pending_unlock_times.append(time.monotonic())
