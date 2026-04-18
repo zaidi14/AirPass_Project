@@ -55,24 +55,24 @@ SHOW_GUI=1 AIRPASS_REQUIRE_RFID=0 ARDUINO_PORT=/dev/ttyUSB0 AIRPASS_REQUIRE_FACE
 - `AIRPASS_SKIP_GESTURE` default: `0`
   - set `1` to test face -> unlock directly
 - `AIRPASS_FACE_TIMEOUT` default: `5.0`
-- `AIRPASS_FACE_STABLE_SECONDS` default: `0.8`
-- `AIRPASS_COUNTDOWN_SECONDS` default: `5.0`
+- `AIRPASS_FACE_STABLE_SECONDS` default: `0.4`
+- `AIRPASS_COUNTDOWN_SECONDS` default: `2.0`
 - `AIRPASS_REQUIRE_FACE_DURING_COUNTDOWN` default: `0`
   - set `1` for strict mode (reset if face is lost during countdown)
-- `AIRPASS_GESTURE_TIMEOUT` default: `5.0`
+- `AIRPASS_GESTURE_TIMEOUT` default: `8.0`
   - timeout window resets after each accepted step in the sequence
 - `AIRPASS_ALLOW_ARDUINO_BYPASS_ON_FAIL` default: `1`
-- `AIRPASS_GESTURE_HOLD_FRAMES` default: `8`
+- `AIRPASS_GESTURE_HOLD_FRAMES` default: `7`
   - constrained to `7..10` to smooth jitter and reject single-frame false positives
 - `AIRPASS_LATENCY_CSV` default: `unlock_latency.csv`
   - logs UNLOCK send -> Arduino `ACK:UNLOCK` roundtrip in milliseconds
 - `SHOW_GUI` default: `1`
   - set `0` to run headless and skip the OpenCV preview window
-- `AIRPASS_UNLOCK_HOLD_SECONDS` default: `5.0`
+- `AIRPASS_UNLOCK_HOLD_SECONDS` default: `1.5`
   - how long latch stays open before `LOCK` is sent
-- `AIRPASS_CAMERA_WIDTH` default: `1280`
-- `AIRPASS_CAMERA_HEIGHT` default: `720`
-- `AIRPASS_CAMERA_FPS` default: `30`
+- `AIRPASS_CAMERA_WIDTH` default: `640`
+- `AIRPASS_CAMERA_HEIGHT` default: `480`
+- `AIRPASS_CAMERA_FPS` default: `24`
 
 ## Raspberry Pi 5 Gesture Backend
 

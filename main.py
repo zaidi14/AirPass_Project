@@ -16,12 +16,12 @@ from vision import VisionProcessor
 
 GESTURE_SEQUENCE = ["Fist", "Peace", "Open"]
 FACE_TIMEOUT_SECONDS = 5.0
-FACE_STABLE_SECONDS = 0.8
-COUNTDOWN_SECONDS = 5.0
-GESTURE_TIMEOUT_SECONDS = 5.0
-UNLOCK_HOLD_SECONDS = 5.0
+FACE_STABLE_SECONDS = 0.4
+COUNTDOWN_SECONDS = 2.0
+GESTURE_TIMEOUT_SECONDS = 8.0
+UNLOCK_HOLD_SECONDS = 1.5
 CAMERA_RETRY_SECONDS = 1.0
-DEFAULT_GESTURE_HOLD_FRAMES = 8
+DEFAULT_GESTURE_HOLD_FRAMES = 7
 SHOW_GUI = int(os.environ.get("SHOW_GUI", 1))
 AIRPASS_FULLSCREEN = int(os.environ.get("AIRPASS_FULLSCREEN", 1))
 
@@ -66,9 +66,9 @@ class SharedState:
 
 def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index: int = 0) -> None:
 	gesture_hold_frames = int(os.getenv("AIRPASS_GESTURE_HOLD_FRAMES", str(DEFAULT_GESTURE_HOLD_FRAMES)))
-	camera_width = int(os.getenv("AIRPASS_CAMERA_WIDTH", "1280"))
-	camera_height = int(os.getenv("AIRPASS_CAMERA_HEIGHT", "720"))
-	camera_fps = int(os.getenv("AIRPASS_CAMERA_FPS", "30"))
+	camera_width = int(os.getenv("AIRPASS_CAMERA_WIDTH", "640"))
+	camera_height = int(os.getenv("AIRPASS_CAMERA_HEIGHT", "480"))
+	camera_fps = int(os.getenv("AIRPASS_CAMERA_FPS", "24"))
 	try:
 		processor = VisionProcessor(gesture_hold_frames=gesture_hold_frames)
 	except Exception as exc:
