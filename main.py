@@ -23,6 +23,7 @@ UNLOCK_HOLD_SECONDS = 5.0
 CAMERA_RETRY_SECONDS = 1.0
 DEFAULT_GESTURE_HOLD_FRAMES = 8
 SHOW_GUI = int(os.environ.get("SHOW_GUI", 1))
+AIRPASS_FULLSCREEN = int(os.environ.get("AIRPASS_FULLSCREEN", 1))
 
 
 class SharedState:
@@ -84,6 +85,8 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 	gui_enabled = SHOW_GUI == 1 and bool(os.environ.get("DISPLAY"))
 	if SHOW_GUI == 1 and not gui_enabled:
 		print("[GUI] DISPLAY is not available. Falling back to headless mode.")
+	window_name = "AirPass Security Node"
+	window_configured = False
 
 	try:
 		while not stop_event.is_set():
@@ -116,7 +119,12 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 
 				if gui_enabled:
 					try:
-						cv2.imshow("AirPass Security Node", rendered)
+						if not window_configured:
+							cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+							if AIRPASS_FULLSCREEN == 1:
+								cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+							window_configured = True
+						cv2.imshow(window_name, rendered)
 						key = cv2.waitKey(1) & 0xFF
 						if key == ord("1"):
 							shared.push_gesture_event("Fist")
