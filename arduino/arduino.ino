@@ -139,12 +139,6 @@ void checkRfid() {
   mfrc522.PCD_StopCrypto1();
 }
 
-void setLockedUi() {
-  lockServo.write(LOCK_ANGLE);
-  setStatusLeds(false, true);
-  showTwoLine("SYSTEM LOCKED", "Waiting auth...");
-}
-
 void handleCommand(String cmd) {
   cmd.trim();
   if (cmd.length() == 0) {
