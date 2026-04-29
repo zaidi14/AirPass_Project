@@ -1,0 +1,18 @@
+#include <Servo.h>
+Servo s;
+void setup() {
+  Serial.begin(115200);
+  s.attach(9);
+  Serial.println("Servo test start");
+}
+void loop() {
+  s.write(0);
+  Serial.println("0");
+  delay(2000);
+  s.write(90);
+  Serial.println("90");
+  delay(2000);
+  s.write(180);
+  Serial.println("180");
+  delay(2000);
+}
