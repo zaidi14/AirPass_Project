@@ -1,0 +1,19 @@
+void setup() {
+  pinMode(3, OUTPUT); // green
+  pinMode(4, OUTPUT); // red
+  digitalWrite(3, LOW);
+  digitalWrite(4, LOW);
+  Serial.begin(115200);
+  Serial.println("LED test start");
+}
+
+void loop() {
+  digitalWrite(3, HIGH); // turn green ON if common-cathode wiring
+  digitalWrite(4, LOW);
+  Serial.println("GREEN ON");
+  delay(1000);
+  digitalWrite(3, LOW);
+  digitalWrite(4, HIGH); // red ON
+  Serial.println("RED ON");
+  delay(1000);
+}
