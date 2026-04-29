@@ -17,3 +17,27 @@ void loop() {
   Serial.println("RED ON");
   delay(1000);
 }
+
+
+
+BLINK TEST
+
+
+void setup() {
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(13, OUTPUT);
+  digitalWrite(3, LOW);
+  digitalWrite(4, LOW);
+  digitalWrite(13, LOW);
+  Serial.begin(115200);
+  Serial.println("LED direct test start");
+}
+void loop() {
+  digitalWrite(3, HIGH); digitalWrite(4, LOW); digitalWrite(13, HIGH);
+  Serial.println("GREEN pin3 HIGH, RED pin4 LOW, LED13 HIGH");
+  delay(700);
+  digitalWrite(3, LOW);  digitalWrite(4, HIGH); digitalWrite(13, LOW);
+  Serial.println("GREEN pin3 LOW, RED pin4 HIGH, LED13 LOW");
+  delay(700);
+}
