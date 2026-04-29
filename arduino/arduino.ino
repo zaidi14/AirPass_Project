@@ -30,8 +30,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 // Example: "AB12CD34", "56EF7890"
 // You will populate these with your card/fob UIDs after testing
 const String authorizedUIDs[] = {
-  "AB12CD34",  // Replace with your key fob UID
-  "56EF7890"   // Replace with your card UID
+  "B842DF12",  // key fob UID (from Serial: B8:42:DF:12)
+  "63D5CD50"   // card UID (from Serial: 63:D5:CD:50)
 };
 const int NUM_AUTHORIZED = 2;
 
