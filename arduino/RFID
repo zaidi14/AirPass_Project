@@ -221,3 +221,23 @@ void setup() {
 }
 
 void loop() { }
+
+
+
+
+
+
+
+card check :
+
+#include <SPI.h>
+#include <MFRC522.h>
+#define SS_PIN 10
+#define RST_PIN 2
+MFRC522 rfid(SS_PIN, RST_PIN);
+void setup(){ Serial.begin(115200); SPI.begin(); rfid.PCD_Init(); Serial.println("presence test"); }
+void loop(){
+  bool present = rfid.PICC_IsNewCardPresent();
+  Serial.println(present ? "PRESENT" : "NO");
+  delay(300);
+}
