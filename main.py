@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+import re
 import math
 import csv
 from collections import deque
@@ -233,6 +234,7 @@ def serial_listener_worker(
 	pending_unlock_times: deque,
 	pending_lock: threading.Lock,
 	latency_csv_path: Path,
+	rfid_queue: deque,
 ) -> None:
 	while not stop_event.is_set():
 		line = arduino.read_line()
@@ -252,6 +254,12 @@ def serial_listener_worker(
 					latency_ms = (time.monotonic() - sent_time) * 1000.0
 					_append_latency(latency_csv_path, "UNLOCK_ACK", latency_ms)
 					print(f"[Latency] UNLOCK ACK roundtrip: {latency_ms:.2f} ms")
+		elif line.startswith("RFID_UID:"):
+			uid = line[len("RFID_UID:"):].strip()
+			# Normalize UID: remove separators and uppercase
+			uid_norm = uid.replace(":", "").replace("-", "").upper()
+			rfid_queue.append(uid_norm)
+			print(f"[Serial] RFID reported: {uid_norm}")
 
 
 def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> None:
@@ -276,9 +284,32 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 		"yes",
 		"on",
 	}
-	allowed_tags = {
-		token.strip().upper() for token in os.getenv("AIRPASS_ALLOWED_TAGS", "").split(",") if token.strip()
-	}
+	# Whitelist file (preferred). If empty/missing, fallback to AIRPASS_ALLOWED_TAGS env var.
+	whitelist_path = Path(os.getenv("AIRPASS_WHITELIST_FILE", "whitelist.txt"))
+
+	def load_allowed_tags() -> set:
+		tags = set()
+		try:
+			if whitelist_path.exists():
+				text = whitelist_path.read_text(encoding="utf-8")
+				# split on commas or newlines, allow colon/dash separated UIDs too
+				for token in re.split(r"[,\n\r]+", text):
+					t = token.strip().upper()
+					if not t:
+						continue
+					# normalize separators
+					t = t.replace(":", "").replace("-", "")
+					tags.add(t)
+		except Exception as exc:
+			print(f"[Whitelist] Failed to read {whitelist_path}: {exc}")
+
+		if not tags:
+			# fallback to environment variable (backwards compatibility)
+			tags = {token.strip().upper() for token in os.getenv("AIRPASS_ALLOWED_TAGS", "").split(",") if token.strip()}
+
+		return tags
+
+	allowed_tags = load_allowed_tags()
 	raw_sequence = os.getenv("AIRPASS_GESTURE_SEQUENCE", "->".join(GESTURE_SEQUENCE))
 	allowed_gestures = {"Fist", "Peace", "Open"}
 	gesture_sequence = [
@@ -291,14 +322,8 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 		gesture_sequence = list(GESTURE_SEQUENCE)
 	latency_csv_path = Path(os.getenv("AIRPASS_LATENCY_CSV", "unlock_latency.csv"))
 
-	rfid = None
-	try:
-		if require_rfid:
-			rfid = RFIDReader(valid_tags=allowed_tags)
-	except Exception as exc:
-		print(f"[RFID] Initialization failed: {exc}")
-		stop_event.set()
-		return
+	# RFID will be provided by Arduino over serial; collect reported UIDs here
+	rfid_queue = deque()
 
 	if not require_rfid:
 		print("[RFID] Optional mode. Starting at Face check (State 1).")
@@ -331,11 +356,11 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	pending_unlock_times = deque()
 	pending_lock = threading.Lock()
 	listener_thread = None
-	if arduino is not None and not skip_arduino:
+    if arduino is not None and not skip_arduino:
 		_init_latency_csv(latency_csv_path)
 		listener_thread = threading.Thread(
 			target=serial_listener_worker,
-			args=(arduino, stop_event, pending_unlock_times, pending_lock, latency_csv_path),
+			args=(arduino, stop_event, pending_unlock_times, pending_lock, latency_csv_path, rfid_queue),
 			name="SerialListenerThread",
 			daemon=True,
 		)
@@ -399,14 +424,28 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 			now = time.monotonic()
 
 			if state == 0:
-				if rfid is None:
-					reset_to_idle("rfid unavailable")
-					time.sleep(0.03)
+				# Check for UID reported by Arduino over serial
+				if not require_rfid:
+					# no RFID required, advance to face check
+					state = 1
+					state_started_at = now
+					face_seen_since = None
 					continue
 
-				uid = rfid.read_tag()
-				if uid:
-					if rfid.is_valid_tag(uid):
+				if rfid_queue:
+					uid = rfid_queue.popleft()
+					if uid:
+						# reload whitelist at decision time so edits to whitelist.txt take effect immediately
+						allowed_tags = load_allowed_tags()
+						if uid in allowed_tags:
+							print(f"[Auth] Valid RFID detected: {uid}")
+							send_arduino("RFID_OK")
+							state = 1
+							state_started_at = now
+							face_seen_since = None
+						else:
+							print(f"[Auth] Invalid RFID detected: {uid}")
+							send_arduino("RFID_DENY")
 						print(f"[Auth] Valid RFID detected: {uid}")
 						send_arduino("RFID_OK")
 						state = 1

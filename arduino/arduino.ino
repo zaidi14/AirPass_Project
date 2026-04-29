@@ -118,23 +118,11 @@ void checkRfid() {
 
   // Get UID and log it
   String cardUID = getUidString(&mfrc522.uid);
+  // Report UID to host (Pi). Do not autonomously accept/deny or change LEDs/display.
   Serial.print("RFID_UID:");
   Serial.println(cardUID);
 
-  // Check against whitelist
-  if (isAuthorizedUID(cardUID)) {
-    Serial.println("RFID_OK");
-    showTwoLine("RFID OK", cardUID);
-    setStatusLeds(true, false);
-    shortBeep(1200, 100);
-  } else {
-    Serial.println("RFID_DENY");
-    showTwoLine("RFID DENIED", cardUID);
-    setStatusLeds(false, true);
-    denyPattern();
-  }
-
-  // Halt PICC
+  // Halt PICC and stop crypto — host (Pi) will decide next actions.
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
 }
