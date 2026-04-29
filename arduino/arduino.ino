@@ -1,7 +1,6 @@
 #include <Servo.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <LiquidCrystal_I2C.h>
 #include <SPI.h>
 #include <MFRC522.h>
 
@@ -18,14 +17,14 @@ const int RC522_RST_PIN = 2;
 // Servo angles for your latch geometry
 const int LOCK_ANGLE = 10;
 const int UNLOCK_ANGLE = 95;
-const int OLED_WIDTH = 128;
-const int OLED_HEIGHT = 64;
-const int OLED_RESET = -1;
-
 // RFID setup
 MFRC522 mfrc522(RC522_SS_PIN, RC522_RST_PIN);
 unsigned long lastRfidCheck = 0;
 unsigned long rfidCheckInterval = 500;  // Check every 500ms to avoid spam
+
+// LCD setup (16x2 with I2C backpack at 0x27)
+// If your LCD doesn't work, try 0x3F instead of 0x27
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Whitelist of authorized UIDs (hexadecimal format as strings)
 // Example: "AB12CD34", "56EF7890"
@@ -37,7 +36,6 @@ const String authorizedUIDs[] = {
 const int NUM_AUTHORIZED = 2;
 
 Servo lockServo;
-Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 
 String lastGesture = "-";
 bool rfidVerified = false;
@@ -48,14 +46,11 @@ void setStatusLeds(bool greenOn, bool redOn) {
 }
 
 void showTwoLine(const String &line1, const String &line2) {
- /* oled.clearDisplay();
-  oled.setTextSize(1);
-  oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(0, 8);
-  oled.println(line1);
-  oled.setCursor(0, 30);
-  oled.println(line2);
-  oled.display();*/
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(line1.substring(0, 16));  // Max 16 chars per line
+  lcd.setCursor(0, 1);
+  lcd.print(line2.substring(0, 16));
 }
 
 void shortBeep(int freq, int ms) {
@@ -220,18 +215,15 @@ void setup() {
   SPI.begin();
   mfrc522.PCD_Init(RC522_SS_PIN, RC522_RST_PIN);
 
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_GREEN_PIN, OUTPUT);
   pinMode(LED_RED_PIN, OUTPUT);
 
   lockServo.attach(SERVO_PIN);
-
-  /*if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("OLED_INIT_FAIL");
-    while (true) {
-      delay(100);
-    }
-  }*/
 
   setLockedUi();
   showTwoLine("AirPass UNO", "Serial ready");
