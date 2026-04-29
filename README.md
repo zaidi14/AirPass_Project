@@ -1,3 +1,94 @@
+# AirPass_Project
+
+Concise Pi-driven door/gesture auth node integrating RC522 RFID, camera face+gesture, and an Arduino actuator.
+
+## Key changes (what we changed)
+- Pi is now the master state machine (`main.py`): it receives `RFID_UID:<HEX>` messages from the Arduino, validates the UID against a runtime `whitelist.txt`, performs face-password verification (optional), runs the gesture sequence, then issues `UNLOCK`/`LOCK` commands to the Arduino.
+- Arduino now only reports RFID scans as `RFID_UID:<HEX>` and performs actuations on Pi commands. Pi logs latency when Arduino ACKs `UNLOCK`.
+- Whitelist moved out of code: `main.py` loads `whitelist.txt` (path configurable with `AIRPASS_WHITELIST_FILE`) and reloads it at each decision so edits take effect immediately. `AIRPASS_ALLOWED_TAGS` remains as a fallback for compatibility.
+
+## How the workflow works (step-by-step)
+1. A tag is presented to the RC522 on the Arduino.
+2. Arduino prints `RFID_UID:<HEX>` to serial.
+3. Pi reads the UID, reloads `whitelist.txt`, and accepts or denies.
+4. If accepted, Pi runs face verification (if enabled). On face pass, Pi announces a short countdown.
+5. Pi runs the configured gesture sequence. On success Pi sends `UNLOCK` to Arduino.
+6. Arduino actuates (servo/LED/buzzer/LCD) and replies `ACK:UNLOCK`; Pi records unlock ACK latency.
+
+## Files of interest
+- `main.py` — master state machine; loads `whitelist.txt` and orchestrates face/gesture/unlock.
+- `whitelist.txt` — one UID per line (created for you with captured UIDs).
+- `arduino_comms.py` / `arduino/arduino.ino` — serial protocol and Arduino behavior (reports `RFID_UID:`; handles `UNLOCK`, `LOCK`, etc.).
+- `vision.py`, `face_auth.py` — camera, gesture and face-password components.
+
+## Whitelist usage
+- Default file: `whitelist.txt` in the project root. Change path with `AIRPASS_WHITELIST_FILE` env var.
+- Format: plain text, one UID per line. UIDs are normalized by removing `:` or `-` and converting to uppercase.
+
+Add a UID (example):
+```bash
+cd ~/AirPass_Project
+echo B842DF12 >> whitelist.txt
+echo 63D5CD50 >> whitelist.txt
+```
+
+Remove a UID (example):
+```bash
+# edit with your preferred editor, or:
+grep -v "B842DF12" whitelist.txt > whitelist.tmp && mv whitelist.tmp whitelist.txt
+```
+
+## Run on Pi (manual)
+1. Install dependencies (once):
+```bash
+cd ~/AirPass_Project
+python3 -m pip install -r requirements.txt
+```
+2. Run the node:
+```bash
+cd ~/AirPass_Project
+python3 main.py
+```
+Notes:
+- `whitelist.txt` in the project root is used by default. To override:
+```bash
+AIRPASS_WHITELIST_FILE=/path/to/my_whitelist.txt python3 main.py
+```
+- To skip RFID during quick tests: `AIRPASS_REQUIRE_RFID=0 python3 main.py`.
+
+## Systemd service (recommended for autostart)
+Create `/etc/systemd/system/airpass.service` (edit `User` and paths):
+
+```ini
+[Unit]
+Description=AirPass Node
+After=network.target
+
+[Service]
+User=oppenheimer
+WorkingDirectory=/home/oppenheimer/AirPass_Project
+ExecStart=/usr/bin/python3 /home/oppenheimer/AirPass_Project/main.py
+Environment=AIRPASS_WHITELIST_FILE=/home/oppenheimer/AirPass_Project/whitelist.txt
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now airpass.service
+sudo journalctl -u airpass.service -f
+```
+
+## Quick troubleshooting
+- If a tag isn't recognized, ensure it's normalized in `whitelist.txt` (remove `:` separators).
+- Confirm Arduino serial port (default `/dev/ttyACM0`) and that the board prints `RFID_UID:` on scan.
+- For face/gesture issues, check the camera (`DISPLAY` for GUI) and MediaPipe availability; set `AIRPASS_SKIP_GESTURE=1` to test face-only flows.
+
+---
+This README documents the current Pi-first workflow and the exact commands to run the node on the Pi. If you want, I can add a small helper script to append detected UIDs automatically when you press a key.
 # AirPass Project (Raspberry Pi Brain + Arduino Muscle)
 
 This project follows the split-brain architecture:
