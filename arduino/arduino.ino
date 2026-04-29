@@ -2,6 +2,8 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <SPI.h>
+#include <MFRC522.h>
 
 // ------------------------
 // Hardware Pin Mapping
@@ -10,6 +12,8 @@ const int SERVO_PIN = 9;
 const int BUZZER_PIN = 6;
 const int LED_GREEN_PIN = 3;
 const int LED_RED_PIN = 4;
+const int RC522_SS_PIN = 10;
+const int RC522_RST_PIN = 2;
 
 // Servo angles for your latch geometry
 const int LOCK_ANGLE = 10;
@@ -18,10 +22,25 @@ const int OLED_WIDTH = 128;
 const int OLED_HEIGHT = 64;
 const int OLED_RESET = -1;
 
+// RFID setup
+MFRC522 mfrc522(RC522_SS_PIN, RC522_RST_PIN);
+unsigned long lastRfidCheck = 0;
+unsigned long rfidCheckInterval = 500;  // Check every 500ms to avoid spam
+
+// Whitelist of authorized UIDs (hexadecimal format as strings)
+// Example: "AB12CD34", "56EF7890"
+// You will populate these with your card/fob UIDs after testing
+const String authorizedUIDs[] = {
+  "AB12CD34",  // Replace with your key fob UID
+  "56EF7890"   // Replace with your card UID
+};
+const int NUM_AUTHORIZED = 2;
+
 Servo lockServo;
 Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 
 String lastGesture = "-";
+bool rfidVerified = false;
 
 void setStatusLeds(bool greenOn, bool redOn) {
   digitalWrite(LED_GREEN_PIN, greenOn ? HIGH : LOW);
@@ -53,6 +72,76 @@ void denyPattern() {
   shortBeep(350, 220);
   delay(240);
   shortBeep(300, 260);
+}
+
+void setLockedUi() {
+  lockServo.write(LOCK_ANGLE);
+  setStatusLeds(false, true);
+  showTwoLine("SYSTEM LOCKED", "Waiting auth...");
+}
+
+// Convert RFID UID bytes to hex string
+String getUidString(MFRC522::Uid *uid) {
+  String uidStr = "";
+  for (byte i = 0; i < uid->size; i++) {
+    if (uid->uidByte[i] < 0x10) {
+      uidStr += "0";
+    }
+    uidStr += String(uid->uidByte[i], HEX);
+  }
+  uidStr.toUpperCase();
+  return uidStr;
+}
+
+// Check if UID is in whitelist
+bool isAuthorizedUID(String uid) {
+  for (int i = 0; i < NUM_AUTHORIZED; i++) {
+    if (uid == authorizedUIDs[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check for RFID card presence and validate
+void checkRfid() {
+  unsigned long now = millis();
+  if (now - lastRfidCheck < rfidCheckInterval) {
+    return;  // Skip if checking too frequently
+  }
+  lastRfidCheck = now;
+
+  // Look for new cards
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+
+  // Select one of the cards
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  // Get UID and log it
+  String cardUID = getUidString(&mfrc522.uid);
+  Serial.print("RFID_UID:");
+  Serial.println(cardUID);
+
+  // Check against whitelist
+  if (isAuthorizedUID(cardUID)) {
+    Serial.println("RFID_OK");
+    showTwoLine("RFID OK", cardUID);
+    setStatusLeds(true, false);
+    shortBeep(1200, 100);
+  } else {
+    Serial.println("RFID_DENY");
+    showTwoLine("RFID DENIED", cardUID);
+    setStatusLeds(false, true);
+    denyPattern();
+  }
+
+  // Halt PICC
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
 }
 
 void setLockedUi() {
@@ -127,6 +216,10 @@ void handleCommand(String cmd) {
 void setup() {
   Serial.begin(115200);
 
+  // Initialize SPI for RC522
+  SPI.begin();
+  mfrc522.PCD_Init(RC522_SS_PIN, RC522_RST_PIN);
+
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_GREEN_PIN, OUTPUT);
   pinMode(LED_RED_PIN, OUTPUT);
@@ -147,6 +240,10 @@ void setup() {
 }
 
 void loop() {
+  // Check for RFID card
+  checkRfid();
+
+  // Handle serial commands from Pi
   if (Serial.available() > 0) {
     String cmd = Serial.readStringUntil('\n');
     handleCommand(cmd);
