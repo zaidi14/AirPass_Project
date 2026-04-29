@@ -22,3 +22,22 @@ void loop() {
   if (nDevices == 0) Serial.println("No I2C devices found");
   delay(2000);
 }
+
+more checks
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("AirPass LCD");
+  lcd.setCursor(0, 1);
+  lcd.print("Hello");
+}
+
+void loop() {}
