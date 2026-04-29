@@ -41,3 +41,18 @@ void loop() {
   Serial.println("GREEN pin3 LOW, RED pin4 HIGH, LED13 LOW");
   delay(700);
 }
+
+
+
+more tests 
+void setup() {
+  pinMode(7, OUTPUT);
+  pinMode(8, OUTPUT);
+  Serial.begin(115200);
+}
+void loop() {
+  digitalWrite(7, HIGH); digitalWrite(8, LOW);
+  delay(400);
+  digitalWrite(7, LOW);  digitalWrite(8, HIGH);
+  delay(400);
+}
