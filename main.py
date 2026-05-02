@@ -407,9 +407,24 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	last_countdown_announced = None
 	face_lost_since = None
 	rfid_wait_announced = False
+	cycle_id = 0
+	rfid_wait_started_at = None
+	cycle_started_at = None
+	face_stage_started_at = None
+	countdown_started_at = None
+	gesture_stage_started_at = None
+	unlock_stage_started_at = None
+
+	def log_stage_duration(event_name: str, started_at: Optional[float], now_ts: float) -> None:
+		if started_at is None:
+			return
+		duration_ms = (now_ts - started_at) * 1000.0
+		_append_latency(latency_csv_path, event_name, duration_ms)
+		print(f"[Latency] {event_name}: {duration_ms:.2f} ms")
 
 	def reset_to_idle(reason: str) -> None:
 		nonlocal state, state_started_at, gesture_progress, face_seen_since, last_countdown_announced, face_lost_since, rfid_wait_announced
+		nonlocal rfid_wait_started_at, cycle_started_at, face_stage_started_at, countdown_started_at, gesture_stage_started_at, unlock_stage_started_at
 		print(f"[Auth] Reset -> State {idle_state} ({reason})")
 		shared.clear_gesture_events()
 		gesture_progress = []
@@ -417,6 +432,12 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 		last_countdown_announced = None
 		face_lost_since = None
 		rfid_wait_announced = False
+		rfid_wait_started_at = None
+		cycle_started_at = None
+		face_stage_started_at = None
+		countdown_started_at = None
+		gesture_stage_started_at = None
+		unlock_stage_started_at = None
 		state = idle_state
 		state_started_at = time.monotonic()
 
@@ -428,10 +449,15 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 				if not rfid_wait_announced:
 					print("[RFID] Waiting for RFID scan...")
 					rfid_wait_announced = True
+					rfid_wait_started_at = now
 
 				# Check for UID reported by Arduino over serial
 				if not require_rfid:
 					# no RFID required, advance to face check
+					cycle_id += 1
+					cycle_started_at = now
+					face_stage_started_at = now
+					_append_latency(latency_csv_path, f"CYCLE_{cycle_id}:RFID_WAIT_MS", 0.0)
 					state = 1
 					state_started_at = now
 					face_seen_since = None
@@ -444,6 +470,10 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 						allowed_tags = load_allowed_tags()
 						if uid in allowed_tags:
 							print(f"[Auth] Valid RFID detected: {uid}")
+							cycle_id += 1
+							cycle_started_at = now
+							face_stage_started_at = now
+							log_stage_duration(f"CYCLE_{cycle_id}:RFID_WAIT_MS", rfid_wait_started_at, now)
 							send_arduino("RFID_OK")
 							state = 1
 							state_started_at = now
@@ -462,18 +492,21 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 							face_seen_since = now
 						elif now - face_seen_since >= face_stable_seconds:
 							print("[Auth] Face detected within timeout")
+							log_stage_duration(f"CYCLE_{cycle_id}:FACE_STAGE_MS", face_stage_started_at, now)
 							if require_face_id:
 								send_arduino("FACE_ID_OK")
 							send_arduino("FACE_OK")
 							shared.clear_gesture_events()
 							gesture_progress = []
 							last_countdown_announced = None
+							countdown_started_at = now
 							state = 4 if skip_gesture else 2
 							state_started_at = now
 				else:
 					face_seen_since = None
 
 				if now - state_started_at > face_timeout:
+					log_stage_duration(f"CYCLE_{cycle_id}:FACE_TIMEOUT_MS", face_stage_started_at, now)
 					send_arduino("FACE_TIMEOUT")
 					reset_to_idle("face timeout")
 
@@ -496,6 +529,8 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 					print(f"[Auth] Countdown: {remaining}s")
 
 				if now - state_started_at >= countdown_seconds:
+					log_stage_duration(f"CYCLE_{cycle_id}:COUNTDOWN_MS", countdown_started_at, now)
+					gesture_stage_started_at = now
 					send_arduino("GESTURE_START")
 					send_arduino(f"GESTURE_PATTERN:{'->'.join(gesture_sequence)}")
 					state = 3
@@ -517,25 +552,32 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 
 						if len(gesture_progress) == len(gesture_sequence):
 							print("[Auth] Gesture sequence complete")
+							log_stage_duration(f"CYCLE_{cycle_id}:GESTURE_STAGE_MS", gesture_stage_started_at, now)
 							send_arduino("GESTURE_SEQUENCE_OK")
 							state = 4
 							state_started_at = now
 					else:
+						log_stage_duration(f"CYCLE_{cycle_id}:GESTURE_FAIL_MS", gesture_stage_started_at, now)
 						send_arduino(f"GESTURE_FAIL:{gesture}")
 						reset_to_idle("wrong gesture")
 
 				if now - state_started_at > gesture_timeout:
+					log_stage_duration(f"CYCLE_{cycle_id}:GESTURE_TIMEOUT_MS", gesture_stage_started_at, now)
 					send_arduino("GESTURE_TIMEOUT")
 					reset_to_idle("gesture timeout")
 
 			elif state == 4:
 				print("[Auth] UNLOCK sequence started")
+				unlock_stage_started_at = now
+				log_stage_duration(f"CYCLE_{cycle_id}:RFID_TO_UNLOCK_MS", cycle_started_at, now)
 				send_arduino("UNLOCK")
 
 				if not _safe_wait(stop_event, unlock_hold_seconds):
 					break
 
+				log_stage_duration(f"CYCLE_{cycle_id}:UNLOCK_HOLD_MS", unlock_stage_started_at, time.monotonic())
 				send_arduino("LOCK")
+				log_stage_duration(f"CYCLE_{cycle_id}:FULL_CYCLE_MS", cycle_started_at, time.monotonic())
 				print("[Auth] LOCK sent, returning to idle")
 				reset_to_idle("unlock cycle complete")
 

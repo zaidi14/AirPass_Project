@@ -20,10 +20,9 @@
                 "/home/opeenheimer/.arduino15/packages/arduino/hardware/avr/1.8.7/variants/standard",
                 "/home/opeenheimer/Arduino/libraries/Servo/src",
                 "/home/opeenheimer/.arduino15/packages/arduino/hardware/avr/1.8.7/libraries/Wire/src",
-                "/home/opeenheimer/Arduino/libraries/Adafruit_GFX_Library",
-                "/home/opeenheimer/Arduino/libraries/Adafruit_BusIO",
+                "/home/opeenheimer/Arduino/libraries/LiquidCrystal_I2C",
                 "/home/opeenheimer/.arduino15/packages/arduino/hardware/avr/1.8.7/libraries/SPI/src",
-                "/home/opeenheimer/Arduino/libraries/Adafruit_SSD1306",
+                "/home/opeenheimer/Arduino/libraries/MFRC522/src",
                 "/home/opeenheimer/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include",
                 "/home/opeenheimer/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include-fixed",
                 "/home/opeenheimer/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/avr/include"
