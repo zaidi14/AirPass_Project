@@ -240,3 +240,16 @@ Arduino library dependencies:
 - Authentication state machine resets on timeouts/wrong gestures.
 - Face must be stable for a short window before advancing.
 - Pi serial listener writes latency samples to CSV for engineering analysis.
+
+
+
+export DISPLAY=:0
+export XAUTHORITY=/home/oppenheimer/.Xauthority
+export AIRPASS_WHITELIST_FILE=/home/opeenheimer/AirPass_Project/whitelist.txt
+export AIRPASS_REQUIRE_RFID=1
+export AIRPASS_REQUIRE_FACE_ID=0
+export AIRPASS_SKIP_GESTURE=0
+export AIRPASS_FULLSCREEN=1
+export SHOW_GUI=1
+
+python main.py
