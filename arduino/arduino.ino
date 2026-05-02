@@ -26,15 +26,6 @@ unsigned long rfidCheckInterval = 500;  // Check every 500ms to avoid spam
 // If your LCD doesn't work, try 0x3F instead of 0x27
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// Whitelist of authorized UIDs (hexadecimal format as strings)
-// Example: "AB12CD34", "56EF7890"
-// You will populate these with your card/fob UIDs after testing
-const String authorizedUIDs[] = {
-  "B842DF12",  // key fob UID (from Serial: B8:42:DF:12)
-  "63D5CD50"   // card UID (from Serial: 63:D5:CD:50)
-};
-const int NUM_AUTHORIZED = 2;
-
 Servo lockServo;
 
 String lastGesture = "-";
@@ -88,16 +79,6 @@ String getUidString(MFRC522::Uid *uid) {
   return uidStr;
 }
 
-// Check if UID is in whitelist
-bool isAuthorizedUID(String uid) {
-  for (int i = 0; i < NUM_AUTHORIZED; i++) {
-    if (uid == authorizedUIDs[i]) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Check for RFID card presence and validate
 void checkRfid() {
   unsigned long now = millis();
@@ -121,6 +102,7 @@ void checkRfid() {
   // Report UID to host (Pi). Do not autonomously accept/deny or change LEDs/display.
   Serial.print("RFID_UID:");
   Serial.println(cardUID);
+  showTwoLine("RFID DETECTED", cardUID);
 
   // Halt PICC and stop crypto — host (Pi) will decide next actions.
   mfrc522.PICC_HaltA();
@@ -192,10 +174,12 @@ void handleCommand(String cmd) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("AIRPASS:BOOT");
 
   // Initialize SPI for RC522
   SPI.begin();
   mfrc522.PCD_Init(RC522_SS_PIN, RC522_RST_PIN);
+  Serial.println("AIRPASS:RC522_INIT_DONE");
 
   // Initialize LCD
   lcd.init();
@@ -211,11 +195,19 @@ void setup() {
   showTwoLine("AirPass UNO", "Serial ready");
   delay(1200);
   setLockedUi();
+  Serial.println("AIRPASS:READY");
 }
 
 void loop() {
+  static unsigned long lastIdleUi = 0;
+
   // Check for RFID card
   checkRfid();
+
+  if (millis() - lastIdleUi > 2000) {
+    lastIdleUi = millis();
+    Serial.println("AIRPASS:WAITING_RFID");
+  }
 
   // Handle serial commands from Pi
   if (Serial.available() > 0) {
