@@ -406,15 +406,17 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	face_seen_since = None
 	last_countdown_announced = None
 	face_lost_since = None
+	rfid_wait_announced = False
 
 	def reset_to_idle(reason: str) -> None:
-		nonlocal state, state_started_at, gesture_progress, face_seen_since, last_countdown_announced, face_lost_since
+		nonlocal state, state_started_at, gesture_progress, face_seen_since, last_countdown_announced, face_lost_since, rfid_wait_announced
 		print(f"[Auth] Reset -> State {idle_state} ({reason})")
 		shared.clear_gesture_events()
 		gesture_progress = []
 		face_seen_since = None
 		last_countdown_announced = None
 		face_lost_since = None
+		rfid_wait_announced = False
 		state = idle_state
 		state_started_at = time.monotonic()
 
@@ -423,6 +425,10 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 			now = time.monotonic()
 
 			if state == 0:
+				if not rfid_wait_announced:
+					print("[RFID] Waiting for RFID scan...")
+					rfid_wait_announced = True
+
 				# Check for UID reported by Arduino over serial
 				if not require_rfid:
 					# no RFID required, advance to face check
@@ -442,17 +448,10 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 							state = 1
 							state_started_at = now
 							face_seen_since = None
+							rfid_wait_announced = False
 						else:
 							print(f"[Auth] Invalid RFID detected: {uid}")
 							send_arduino("RFID_DENY")
-						print(f"[Auth] Valid RFID detected: {uid}")
-						send_arduino("RFID_OK")
-						state = 1
-						state_started_at = now
-						face_seen_since = None
-					else:
-						print(f"[Auth] Invalid RFID detected: {uid}")
-						send_arduino("RFID_DENY")
 
 			elif state == 1:
 				if shared.has_face():
