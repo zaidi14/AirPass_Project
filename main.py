@@ -356,7 +356,7 @@ def state_machine_worker(shared: SharedState, stop_event: threading.Event) -> No
 	pending_unlock_times = deque()
 	pending_lock = threading.Lock()
 	listener_thread = None
-    if arduino is not None and not skip_arduino:
+	if arduino is not None and not skip_arduino:
 		_init_latency_csv(latency_csv_path)
 		listener_thread = threading.Thread(
 			target=serial_listener_worker,
