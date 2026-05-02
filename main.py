@@ -101,9 +101,8 @@ def camera_worker(shared: SharedState, stop_event: threading.Event, camera_index
 			print(f"[FaceID] Enabled with reference: {face_ref_image}, threshold={face_id_threshold:.2f}")
 		except Exception as exc:
 			print(f"[FaceID] Initialization failed: {exc}")
-			stop_event.set()
-			processor.close()
-			return
+			print("[FaceID] Skipping face-password verification for this run.")
+			face_auth = None
 
 	capture = None
 	skip_gesture = os.getenv("AIRPASS_SKIP_GESTURE", "0").strip().lower() in {"1", "true", "yes", "on"}
