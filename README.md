@@ -1,6 +1,4 @@
 
-
-```
 # AirPass — Edge-Based Multi-Factor Physical Access Control System
 
 **A split-brain edge security system combining RFID, biometric verification, and real-time gesture authentication for physical access control.**
@@ -27,7 +25,6 @@ It is designed for:
 
 ```text
 RFID Reader → Raspberry Pi Policy Engine → Vision AI Challenge → Decision State Machine → Arduino Actuator
-````
 
 ### Architecture Model
 
