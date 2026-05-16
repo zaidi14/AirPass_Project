@@ -238,20 +238,24 @@ The authentication loop immediately resets, no `UNLOCK` payload is transmitted, 
 ## Repository Structure
 
 ```text
-AirPass_Project/
+secure-edge-authentication-system/
 ├── arduino/
-│   └── arduino.ino             # C++ firmware for the Arduino Uno
+│   ├── arduino.ino                 # C++ firmware for the Arduino Uno
+│   └── Hardware_Tests/
+│       ├── I2C _SCANNER            # Arduino I2C scanner test
+│       ├── LED                     # LED test script
+│       ├── RFID                    # RFID hardware test
+│       └── SERVO                   # Servo motor test
 ├── src/
-│   ├── main.py                 # Core state machine orchestration
-│   ├── vision.py               # MediaPipe/OpenCV gesture detection logic
-│   ├── face_auth.py            # Facial verification handlers
-│   └── arduino_comms.py        # Serial protocol bridge
-├── systemd/
-│   └── airpass.service         # Daemon configuration
-├── requirements.txt            # Python dependencies
-├── whitelist.txt               # Active RFID policy file
-└── README.md                   # Project documentation
-
+│   ├── arduino_comms.py            # Serial protocol bridge
+│   ├── face_auth.py                # Facial verification handlers
+│   ├── main.py                     # Core state machine orchestration
+│   ├── rfid_reader.py              # RFID reader integration
+│   └── vision.py                   # MediaPipe/OpenCV gesture detection logic
+├── face_password.jpeg              # Reference image for facial verification
+├── requirements.txt                # Python dependencies
+├── whitelist.txt                   # Active RFID policy file
+└── README.md                       # Project documentation
 ```
 
 ---
