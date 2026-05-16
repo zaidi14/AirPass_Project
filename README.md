@@ -1,13 +1,5 @@
-You're right—the previous version separated "Architecture", "Workflow", and "Deployment" into distinct sections, which caused the same concepts (like the Pi/Arduino split and the facial recognition steps) to repeat.
-
-Let's strip out the redundancy, merge the overlapping sections, and make it a lean, professional engineering document. Here is the streamlined version.
-
----
 
 # AirPass
-
-
-*(Placeholder: Add a 5-second GIF showing a successful unlock sequence)*
 
 AirPass is a multi-factor, air-gapped physical access control node. It upgrades traditional (and easily cloned) RFID systems by integrating a secondary, edge-based computer vision layer requiring active gesture and facial verification to trigger a physical unlock.
 
