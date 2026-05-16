@@ -1,264 +1,263 @@
-# AirPass: Multi-Factor Air-Gapped Physical Access Control
 
-**An Edge-Powered IoT Solution for Zero-Touch Gesture & Biometric Security**
 
----
+```
+# AirPass — Edge-Based Multi-Factor Physical Access Control System
 
-## Project Overview
-
-AirPass is a **real-time, edge-powered physical access control node**. It upgrades traditional (and easily cloned) RFID systems by integrating a secondary, edge-based computer vision layer. By requiring active gesture sequences and facial verification to trigger a physical unlock, AirPass provides a highly configurable, multi-factor smart-lock system.
-
-### Key Features
-
-* ✅ **Multi-Factor Authentication** combining RFID, facial recognition, and dynamic hand gestures.
-* ✅ **Split-Brain Architecture** ensuring physical actuators (Arduino) cannot self-authorize without the policy engine (Raspberry Pi).
-* ✅ **Edge AI Processing** using MediaPipe and OpenCV on aarch64 for local, low-latency inference.
-* ✅ **Fail-Secure State Machine** that instantly resets and remains mechanically locked on camera failure, serial drop, or timeout.
-* ✅ **Hot-Reloadable Policy** via a runtime `whitelist.txt`—no system reboots required to grant or revoke access.
-* ✅ **Telemetry Logging** capturing end-to-end unlock latency for engineering analysis.
+**A split-brain edge security system combining RFID, biometric verification, and real-time gesture authentication for physical access control.**
 
 ---
 
-## Problem Statement & Motivation
+## 1. SYSTEM SUMMARY
 
-**Physical Security Challenge:** Traditional access systems rely on single-factor authentication (RFID cards or keys). These are susceptible to theft, cloning (e.g., using a Flipper Zero), or loss.
+AirPass is an **edge-computed physical access control system** designed to eliminate single-factor RFID-based vulnerabilities through a multi-stage authentication pipeline.
 
-* A cloned card grants immediate, unquestioned access.
-* Standard biometric systems are expensive, proprietary, and often require physical touch.
+The system enforces access decisions using a **Raspberry Pi-based policy engine** and a physically isolated **Arduino actuator layer**, ensuring that no single hardware component can independently grant access.
 
-**Our Solution:** Deploy a multi-layered, split-brain IoT node. RFID acts merely as an *initiation trigger*. True authorization requires the physical presence of the authorized user (Facial ID) and active intent (Gesture Sequence challenge), completely neutralizing stolen or cloned RFID tags.
+It is designed for:
+- Secure physical environments
+- Anti-cloning access control
+- Edge AI authentication pipelines
+- Fail-secure infrastructure design
 
 ---
 
-## System Architecture
+## 2. SYSTEM ARCHITECTURE
 
-### Hardware Stack
+### High-Level Flow
 
-| Component | Specification | Purpose |
-| --- | --- | --- |
-| **Raspberry Pi 5** | 8GB RAM, 32GB SD Card | The "Brain": Master state machine, runs Vision AI (MediaPipe), manages policies. |
-| **Arduino Uno R3** | ATmega328P Microcontroller | The "Muscle": Hardware actuator and sensor interface. |
-| **USB Webcam** | Standard physical webcam (640x480) | Captures real-time frames for Face & Gesture detection. |
-| **RFID Reader** | RC522 Module | Reads RFID Keyfobs and Cards (Factor 1). |
-| **Servo Motor** | SG90 / Standard Micro Servo | Actuates the physical deadbolt/latch. |
+```text
+RFID Reader → Raspberry Pi Policy Engine → Vision AI Challenge → Decision State Machine → Arduino Actuator
+````
 
-### Software Stack
+### Architecture Model
 
-| Layer | Technology | Role |
-| --- | --- | --- |
-| **Edge AI** | MediaPipe Hands, OpenCV | Hand landmark detection and facial reference matching. |
-| **Control Logic** | Python 3.11 | State machine orchestration, whitelist validation. |
-| **Connectivity** | `pyserial` (UART over USB) | Fail-secure bridge protocol between Pi and Arduino. |
-| **Embedded** | C++ (Arduino) | Actuator control, raw sensor polling. |
-| **OS Level** | `systemd` | Daemonization, auto-start, and fault recovery. |
+```text
+        ┌──────────────────────────────┐
+        │   Raspberry Pi (Brain)       │
+        │  - State Machine             │
+        │  - Vision AI (MediaPipe)     │
+        │  - Policy Enforcement         │
+        └─────────────┬────────────────┘
+                      │ Serial (UART)
+                      ▼
+        ┌──────────────────────────────┐
+        │   Arduino (Actuator Layer)   │
+        │  - Servo Lock                │
+        │  - RFID Reader Interface     │
+        │  - Hardware Execution        │
+        └──────────────────────────────┘
+```
 
 ### Data Flow
 
 ```text
-[RFID Scanned] → UID detected by RC522 
-                    ↓
-[UART Serial]  → "RFID_UID:<HEX>" sent to Pi
-                    ↓
-[Policy Check] → Pi validates UID against whitelist.txt
-                    ↓
-[Vision AI]    → YES: Activate Camera → Require Facial Match (Optional)
-                 NO: Reset to IDLE
-                    ↓
-[Challenge]    → Initiate 5-second countdown → Prompt for Gesture Sequence
-                    ↓
-[Inference]    → MediaPipe verifies (e.g., Fist → Peace → Open)
-                    ↓
-[Actuation]    → SUCCESS: Pi sends "UNLOCK" via Serial
-                    ↓
-[Hardware]     → Arduino rotates Servo → Delays → Auto-locks → replies "ACK:UNLOCK"
-
+RFID UID
+   ↓
+Pi Policy Validation (whitelist.txt)
+   ↓
+Optional Face Authentication
+   ↓
+Timed Gesture Challenge (MediaPipe)
+   ↓
+Decision Engine (State Machine)
+   ↓
+UNLOCK / RESET Command to Arduino
+   ↓
+Physical Actuation + Telemetry Logging
 ```
 
-### State Machine (Raspberry Pi Master)
+---
+
+## 3. THREAT & FAILURE MODEL
+
+### Threat Model
+
+AirPass assumes adversaries may attempt:
+
+* RFID cloning or replay attacks
+* Unauthorized physical proximity attacks
+* Credential leakage (tag theft)
+* Passive observation of entry patterns
+
+### Failure Model
+
+The system is explicitly designed to fail-safe under:
+
+* Camera failure
+* Serial communication loss
+* Gesture timeout
+* Sensor inconsistency
+* Policy file corruption
+
+### Security Principle
+
+> The Arduino is never trusted to make decisions — only to execute them.
+
+---
+
+## 4. CORE ENGINEERING DESIGN
+
+### 4.1 State Machine (Core System Logic)
 
 ```text
 IDLE
- ↓ (RFID Scanned)
-RFID_CHECK → Validates against runtime whitelist
- ↓ (Authorized)
-FACE_AUTH → Requires stable face match (Configurable)
- ↓ (Matched)
-COUNTDOWN → 5-second visual/audio prep window
- ↓ (Complete)
-GESTURE_CHALLENGE → Monitors MediaPipe stream for sequence execution
- ↓ (Sequence correct before timeout)
-UNLOCK → Transmit command to Arduino, log latency, wait
- ↓ (Hold time expires)
-RESET → Return to IDLE
-
+  ↓ RFID detected
+RFID_VALIDATION
+  ↓ authorized
+FACE_AUTH (optional)
+  ↓ success
+COUNTDOWN
+  ↓ active challenge
+GESTURE_VERIFICATION
+  ↓ success
+UNLOCK
+  ↓ timeout
+RESET (fail-safe)
 ```
 
 ---
 
-## Hardware Setup
+### 4.2 Authentication Model
 
-### Components List
+AirPass implements **multi-factor layered authentication**:
 
-| Item | Qty | Role |
-| --- | --- | --- |
-| Raspberry Pi 5 (8GB) | 1 | Master compute node |
-| 32GB MicroSD Card | 1 | Pi OS and application storage |
-| Arduino Uno R3 | 1 | Hardware controller |
-| Physical Webcam | 1 | Vision input |
-| RC522 RFID Reader | 1 | Tag scanner |
-| RFID Keyfob / Card | 1+ | User credentials |
-| Servo Motor | 1 | Lock actuator |
-| Breadboard | 1 | Prototyping base |
-| Jumper Cables (M/M, M/F) | Set | Component wiring |
-| USB Cables | 2 | Pi Power & Arduino-to-Pi Serial Bridge |
-
-### Wiring Summary (Arduino)
-
-* **RC522 (SPI):** SDA(10), SCK(13), MOSI(11), MISO(12), RST(9)
-* **Servo Motor:** PWM Pin 6
-* *(Optional status LEDs and Buzzers can be mapped directly in `arduino/arduino.ino`)*
+| Factor           | Type       | Purpose               |
+| ---------------- | ---------- | --------------------- |
+| RFID             | Possession | Identity trigger      |
+| Face Recognition | Biometric  | Identity verification |
+| Gesture Sequence | Behavioral | Intent verification   |
 
 ---
 
-## Software Installation & Deployment
+### 4.3 Trust Boundary Design
 
-### Prerequisites
+```text
+TRUSTED ZONE:
+- Raspberry Pi (decision authority)
+- Vision AI pipeline
 
-* Raspberry Pi running a 64-bit OS (aarch64 required for MediaPipe).
-* Arduino IDE for flashing the Uno.
-* Python 3.11+.
+UNTRUSTED ZONE:
+- Arduino microcontroller
+- RFID reader input
+- Physical actuator layer
+```
 
-### Step 1: Flash Arduino Firmware
+---
 
-1. Open `arduino/arduino.ino` in the Arduino IDE.
-2. Select **Board:** Arduino Uno.
-3. Select the correct COM port.
-4. Click **Upload**.
+## 5. OBSERVABILITY & TELEMETRY
 
-### Step 2: Raspberry Pi Environment Setup
+The system logs:
 
-Connect the Arduino to the Pi via USB, plug in the webcam, and run the following on the Pi:
+* Unlock decision latency (ms)
+* RFID validation events
+* Gesture success/failure sequences
+* Serial command acknowledgements
+
+### Example Event Stream
+
+```text
+RFID_UID: B842DF12 → VALID
+FACE_MATCH: TRUE
+GESTURE: Fist → Peace → Open → SUCCESS
+UNLOCK_LATENCY: 183ms
+ACK:UNLOCK received
+```
+
+### Engineering Insight
+
+This system treats authentication as a **measurable event pipeline**, not a binary decision.
+
+---
+
+## 6. DEPLOYMENT
+
+### Requirements
+
+* Raspberry Pi 5 (64-bit OS required)
+* Arduino Uno
+* Webcam
+* Python 3.11+
+
+---
+
+### Setup
 
 ```bash
-# Clone repository
 git clone https://github.com/YOUR_USERNAME/AirPass_Project.git
 cd AirPass_Project
 
-# Create and activate virtual environment
 python3.11 -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies 
-pip install --upgrade pip
 pip install -r requirements.txt
-
 ```
 
-### Step 3: Run as a Systemd Service (Production)
+---
 
-To ensure AirPass starts automatically on boot and recovers from crashes:
+### Run
 
 ```bash
-sudo cp systemd/airpass.service /etc/systemd/system/
-sudo systemctl daemon-reload
+SHOW_GUI=1 AIRPASS_REQUIRE_RFID=1 python3 main.py
+```
+
+---
+
+### Production Mode
+
+```bash
 sudo systemctl enable --now airpass.service
-
 ```
 
 ---
 
-## Usage & Operation
+## 7. DESIGN TRADEOFFS & LIMITATIONS
 
-### Access Management (Whitelist)
+### Tradeoffs
 
-The system hot-reloads `whitelist.txt` on every scan. UIDs must be normalized (uppercase, no colons).
+* Increased security complexity vs usability
+* Higher latency due to multi-factor pipeline
+* Dependence on camera-based inference reliability
 
-```bash
-# Add an allowed user (takes effect immediately)
-echo "B842DF12" >> whitelist.txt
+### Known Limitations
 
-# Remove a user
-grep -v "B842DF12" whitelist.txt > whitelist.tmp && mv whitelist.tmp whitelist.txt
+* Gesture recognition sensitive to lighting conditions
+* Face authentication requires stable framing
+* RFID still acts as initial trigger (not standalone secure)
 
-```
+### Future Improvements
 
-### Running the Node Manually
-
-AirPass is fully managed via environment variables.
-
-**Interactive Execution (GUI Enabled, perfect for testing):**
-
-```bash
-SHOW_GUI=1 AIRPASS_REQUIRE_RFID=1 AIRPASS_GESTURE_SEQUENCE="Fist->Peace->Open" python3 main.py
-
-```
-
-**High-Security Mode (Headless, Face-ID + Gesture + RFID):**
-
-```bash
-SHOW_GUI=0 AIRPASS_REQUIRE_RFID=1 AIRPASS_REQUIRE_FACE_ID=1 AIRPASS_GESTURE_SEQUENCE="Fist->Peace->Open" python3 main.py
-
-```
-
-### Configuration Variables
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `ARDUINO_PORT` | `/dev/ttyACM0` | Serial port for the Arduino bridge. |
-| `AIRPASS_REQUIRE_RFID` | `0` | Set `1` to require an RFID scan before the vision challenge. |
-| `AIRPASS_REQUIRE_FACE_ID` | `0` | Set `1` to require strict facial password matching against `face_password.jpg`. |
-| `AIRPASS_GESTURE_SEQUENCE` | `Fist->Peace->Open` | The sequence required to trigger an unlock. |
-| `AIRPASS_WHITELIST_FILE` | `./whitelist.txt` | Path to the active RFID policy list. |
-| `SHOW_GUI` | `1` | Set `0` for headless operation (saves CPU overhead). |
-| `AIRPASS_UNLOCK_HOLD_SECONDS` | `1.5` | Duration the actuator remains open before auto-locking. |
+* Replace gesture model with transformer-based pose estimation
+* Add encrypted secure enclave for identity storage
+* Introduce anomaly detection on access patterns
+* Multi-node distributed authentication network
 
 ---
 
-## Security Model & Edge AI Integration
+## 8. SYSTEM DESIGN PRINCIPLE
 
-### 1. Split-Brain Trust Boundary
+> Security is enforced through layered intent validation, not single-point identity verification.
 
-The Arduino is intentionally treated as an **untrusted actuator**. It cannot make unlock decisions. It only reports environmental data (`RFID_UID`) and executes explicit `UNLOCK` commands. The Raspberry Pi retains absolute authority over the state machine.
+AirPass is built on the principle that:
 
-### 2. RFID Replay Mitigation
-
-Standard RFID authentication is vulnerable to replay attacks and tag cloning. AirPass mitigates this by using RFID strictly as Factor 1. True authorization requires secondary biometric verification and a dynamic, time-sensitive gesture challenge (Factor 2). A stolen tag without the owner's face and gesture knowledge is useless.
-
-### 3. Fail-Secure Design
-
-The system defaults to a mechanically locked state. In the event of:
-
-* Camera failure / disconnection
-* Serial bridge failure
-* Gesture challenge timeout
-The authentication loop immediately resets, no `UNLOCK` payload is transmitted, and the physical area remains secured.
+* possession is not identity
+* biometrics are not sufficient
+* intent must be actively demonstrated
 
 ---
 
-## Repository Structure
+## 9. REPOSITORY STRUCTURE
 
 ```text
 secure-edge-authentication-system/
 ├── arduino/
-│   ├── arduino.ino                 # C++ firmware for the Arduino Uno
-│   └── Hardware_Tests/
-│       ├── I2C _SCANNER            # Arduino I2C scanner test
-│       ├── LED                     # LED test script
-│       ├── RFID                    # RFID hardware test
-│       └── SERVO                   # Servo motor test
 ├── src/
-│   ├── arduino_comms.py            # Serial protocol bridge
-│   ├── face_auth.py                # Facial verification handlers
-│   ├── main.py                     # Core state machine orchestration
-│   ├── rfid_reader.py              # RFID reader integration
-│   └── vision.py                   # MediaPipe/OpenCV gesture detection logic
-├── face_password.jpeg              # Reference image for facial verification
-├── requirements.txt                # Python dependencies
-├── whitelist.txt                   # Active RFID policy file
-└── README.md                       # Project documentation
+│   ├── main.py
+│   ├── vision.py
+│   ├── face_auth.py
+│   ├── rfid_reader.py
+│   └── arduino_comms.py
+├── whitelist.txt
+├── face_password.jpeg
+└── requirements.txt
 ```
 
----
-
-## Video Demo
-* [AirPass Live Hardware Demonstration](https://www.google.com/search?q=%23) *(Video link coming soon)*
