@@ -19,6 +19,30 @@ It is designed for:
 
 ---
 
+##  SKILL MAPPING (Recruiter View)
+
+###  Embedded Security Systems
+* Multi-modal authentication (RFID + face + gesture)
+* Hardware-software integration pipelines
+* Secure serial communication design
+
+###  Identity & Access Systems
+* Multi-factor authentication architecture
+* Device-based access control logic
+* Identity verification state machines
+
+###  Systems Design
+* Real-time decision pipelines
+* Hardware-triggered security workflows
+* Embedded event-driven architecture
+
+###  Security Engineering
+* Access control enforcement logic
+* Authentication failure handling systems
+* Physical security system modeling
+
+
+---
 ## 2. SYSTEM ARCHITECTURE
 
 ### High-Level Flow
