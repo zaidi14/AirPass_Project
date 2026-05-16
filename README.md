@@ -246,15 +246,26 @@ AirPass is built on the principle that:
 
 ```text
 secure-edge-authentication-system/
-├── arduino/
-├── src/
-│   ├── main.py
-│   ├── vision.py
-│   ├── face_auth.py
-│   ├── rfid_reader.py
-│   └── arduino_comms.py
-├── whitelist.txt
-├── face_password.jpeg
-└── requirements.txt
+│
+├── arduino/                              # Embedded hardware control layer (Actuation Plane)
+│   ├── arduino.ino                       # Main firmware: RFID reader + servo control + serial protocol handler
+│   │
+│   └── Hardware_Tests/                  # Low-level validation scripts for individual components
+│       ├── I2C_SCANNER                  # Detects connected I2C devices (OLED / peripherals debugging)
+│       ├── LED                          # Standalone GPIO LED test for circuit validation
+│       ├── RFID                         # RC522 module verification + UID read test
+│       └── SERVO                        # Servo calibration + rotation range testing
+│
+├── src/                                 # Edge intelligence layer (Decision Plane - Raspberry Pi)
+│   ├── main.py                          # Core finite state machine (RFID → Face → Gesture → Unlock orchestration)
+│   ├── arduino_comms.py                 # Serial bridge (Pi ↔ Arduino command/ACK protocol layer)
+│   ├── rfid_reader.py                   # RFID UID parsing + normalization + ingestion logic
+│   ├── vision.py                        # MediaPipe/OpenCV pipeline (gesture detection + frame processing)
+│   └── face_auth.py                     # Face verification module (reference image matching + thresholding)
+│
+├── face_password.jpeg                   # Biometric reference template (face embedding anchor)
+├── whitelist.txt                        # Runtime access policy (hot-reloaded RFID allowlist)
+├── requirements.txt                     # Python dependency graph (MediaPipe, OpenCV, etc.)
+└── README.md                            # System architecture + deployment + threat model
 ```
 
